@@ -1,0 +1,31 @@
+{
+  "name": "Inventory — Gestion des publications",
+  "short_name": "Inventory",
+  "description": "Application de gestion du stock des publications pour les assemblées des Témoins de Jéhovah",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5F3EE",
+  "theme_color": "#1B2D4F",
+  "lang": "fr",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

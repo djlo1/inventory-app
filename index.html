@@ -343,6 +343,7 @@ function ConnexionForm({onLogin, goInscription}) {
       if (found && found.length > 0) {
         const membre = found[0];
         db.setSession(membre.assemblee_id, membre.id);
+        console.log('Login OK:', membre.prenom, 'asm:', membre.assemblee_id);
         onLogin(membre);
       } else {
         setErr("Nom d'utilisateur ou code PIN incorrect.");
@@ -387,13 +388,24 @@ function InscriptionForm({onLogin, goConnexion}) {
     if (busy) return;
     setBusy(true); setErr('');
     try {
-      const {data:existing} = await sb.from('membres').select('id').ilike('username', usr.username.trim());
-      if (existing && existing.length > 0) { setErr("Ce nom d'utilisateur est déjà pris."); setBusy(false); return; }
-      const asmData = {...asm, numero: asm.numero.toUpperCase()};
-      const newAsm = await db.createAssemblee(asmData);
-      const newMembre = await db.createMembre({...usr, username: usr.username.trim().toLowerCase(), assemblee_id: newAsm.id});
-      await db.insertDefaultArticles(newAsm.id);
-      db.setSession(newAsm.id, newMembre.id);
+      // Vérifier username unique
+      const {data:existingUser} = await sb.from('membres').select('id').ilike('username', usr.username.trim());
+      if (existingUser && existingUser.length > 0) { setErr("Ce nom d'utilisateur est déjà pris."); setBusy(false); return; }
+      const numUp = asm.numero.toUpperCase();
+      // Vérifier si l'assemblée existe déjà par numéro
+      const {data:existingAsm} = await sb.from('assemblees').select('*').eq('numero', numUp);
+      let targetAsm;
+      if (existingAsm && existingAsm.length > 0) {
+        // L'assemblée existe déjà — rejoindre
+        targetAsm = existingAsm[0];
+      } else {
+        // Nouvelle assemblée
+        const asmData = {...asm, numero: numUp};
+        targetAsm = await db.createAssemblee(asmData);
+        await db.insertDefaultArticles(targetAsm.id);
+      }
+      const newMembre = await db.createMembre({...usr, username: usr.username.trim().toLowerCase(), assemblee_id: targetAsm.id});
+      db.setSession(targetAsm.id, newMembre.id);
       onLogin(newMembre);
     } catch(e) {
       setErr('Erreur : ' + (e.message || 'connexion impossible'));
@@ -423,7 +435,8 @@ function InscriptionForm({onLogin, goConnexion}) {
         h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'LANGUE PRINCIPALE'),
         h('select',{value:asm.langue,onChange:e=>setAsm({...asm,langue:e.target.value}),style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
           ...LANGUES.map(l=>h('option',{key:l,value:l},l)))),
-      h('button',{onClick:()=>{if(step1Ok)setStep(2);},disabled:!step1Ok,
+      h('div',{id:'asm-check'},null),
+      h('button',{onClick:async()=>{if(!step1Ok)return;setErr('');const{data:ex}=await sb.from('assemblees').select('nom,numero').eq('numero',asm.numero.toUpperCase());if(ex&&ex.length>0){setErr('ℹ️ L\'assemblée '+ex[0].nom+' ('+ex[0].numero+') existe déjà. Votre compte sera ajouté à cette assemblée.');}setStep(2);},disabled:!step1Ok,
         style:{width:'100%',padding:'13px',borderRadius:11,background:step1Ok?C.navy:'#E8E5DF',color:step1Ok?'#fff':C.muted,fontSize:14,fontWeight:600,cursor:step1Ok?'pointer':'not-allowed',border:'none'}},'Continuer →')),
 
     step===2 && h('div',{style:{width:'100%',maxWidth:340}},

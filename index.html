@@ -1066,7 +1066,7 @@ function InventairePage({arts,mvts,asm}) {
     const ent = mMvts.filter(m=>m.type==='entree'&&m.article_id===a.id).reduce((s,m)=>s+m.quantite,0);
     const sort = mMvts.filter(m=>m.type==='sortie'&&m.article_id===a.id).reduce((s,m)=>s+m.quantite,0);
     return {...a,ent,sort,act:isCur?a.stock:null,ini:isCur?(a.stock-ent+sort):null,has:ent>0||sort>0||a.stock>0};
-  });
+  }).filter(a => a.ent > 0 || a.sort > 0 || a.stock > 0);
   const tEnt = rows.reduce((s,a)=>s+a.ent,0);
   const tSort = rows.reduce((s,a)=>s+a.sort,0);
 
@@ -1693,36 +1693,7 @@ function DemandesPage({arts, demandes, asmId, onRefresh}) {
           d.statut==='en_attente' && h('button',{onClick:()=>updateStatut(d.id,'commande'),style:{padding:'4px 10px',borderRadius:6,background:C.navy+'11',color:C.navy,fontSize:10,fontWeight:500,cursor:'pointer',border:'1px solid '+C.navy+'22'}},'→ Commandé'),
           d.statut==='commande' && h('button',{onClick:()=>updateStatut(d.id,'recu'),style:{padding:'4px 10px',borderRadius:6,background:C.ok+'11',color:C.ok,fontSize:10,fontWeight:500,cursor:'pointer',border:'1px solid '+C.ok+'22'}},'→ Reçu')));
     })
-  ,
-
-    tab==='alertes' && h('div',null,
-      h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
-        h('div',{style:{fontSize:13,fontWeight:600,color:C.text,marginBottom:10}},'Rappel d\'inventaire mensuel'),
-        h('div',{style:{fontSize:11,color:C.muted,marginBottom:14,lineHeight:1.5}},'Configurez une date de rappel pour vous souvenir d\'envoyer l\'inventaire au responsable chaque mois.'),
-        h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:14}},
-          h('div',{onClick:()=>{const v=!alertEnabled;setAlertEnabled(v);localStorage.setItem('inv_alert_enabled',v?'true':'false');},style:{width:44,height:24,borderRadius:12,background:alertEnabled?C.ok:'#ccc',cursor:'pointer',position:'relative',transition:'all .2s'}},
-            h('div',{style:{width:20,height:20,borderRadius:10,background:'#fff',position:'absolute',top:2,left:alertEnabled?22:2,transition:'all .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}})),
-          h('div',{style:{fontSize:12,color:alertEnabled?C.text:C.muted,fontWeight:500}},alertEnabled?'Rappels activés':'Rappels désactivés')),
-        alertEnabled && h('div',null,
-          h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'JOUR DU RAPPEL (chaque mois)'),
-          h('div',{style:{display:'flex',alignItems:'center',gap:8}},
-            h('select',{value:alertDay,onChange:e=>{setAlertDay(e.target.value);localStorage.setItem('inv_alert_day',e.target.value);},style:{flex:1,padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
-              ...Array.from({length:28},(_,i)=>h('option',{key:i+1,value:String(i+1)},'Le '+(i+1)+' du mois'))),
-            h('div',{style:{fontSize:11,color:C.muted}},'de chaque mois')),
-          h('div',{style:{marginTop:12,padding:'10px',background:C.navy+'08',borderRadius:8}},
-            h('div',{style:{fontSize:11,color:C.navy,fontWeight:500}},'Prochain rappel :'),
-            h('div',{style:{fontSize:12,color:C.text,marginTop:2}},(() => {
-              const d = parseInt(alertDay);
-              const now = new Date();
-              let next = new Date(now.getFullYear(), now.getMonth(), d);
-              if (next <= now) next = new Date(now.getFullYear(), now.getMonth()+1, d);
-              return next.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-            })()),
-            h('div',{style:{fontSize:10,color:C.muted,marginTop:4}},'Une notification apparaîtra sur le tableau de bord ce jour-là.')))),
-      h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border}},
-        h('div',{style:{fontSize:13,fontWeight:600,color:C.text,marginBottom:8}},'Comment ça marche'),
-        h('div',{style:{fontSize:11,color:C.muted,lineHeight:1.6}},
-          'Le jour configuré, un bandeau de rappel apparaîtra en haut du tableau de bord pour vous inviter à exporter et envoyer l\'inventaire mensuel. Allez dans l\'onglet Inventaire pour exporter le PDF complet du stock.'))))
+  );
 }
 
 

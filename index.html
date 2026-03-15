@@ -699,7 +699,164 @@ function SuperAdminPanel({user, onSelectAsm, onLogout}) {
   );
 }
 
-function Dashboard({arts,mvts,asm,user,setPage}) {
+// ═══════════════════════════════════════
+// ANALYTICS & AI INSIGHTS
+// ═══════════════════════════════════════
+function analyzeData(arts, mvts, demandes) {
+  const now = new Date();
+  const months = [];
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'));
+  }
+
+  // Top articles by sorties this month
+  const curM = months[0];
+  const curMvts = mvts.filter(m => mKey(m.date) === curM && m.type === 'sortie');
+  const artSorties = {};
+  curMvts.forEach(m => { artSorties[m.article_id] = (artSorties[m.article_id]||0) + m.quantite; });
+  const topArts = Object.entries(artSorties).map(([id,qty]) => ({art: arts.find(a=>a.id===id), qty})).filter(x=>x.art).sort((a,b)=>b.qty-a.qty).slice(0,10);
+
+  // Monthly trends (6 months)
+  const trends = months.map(m => {
+    const mMvts = mvts.filter(x => mKey(x.date) === m);
+    return {
+      month: m,
+      sorties: mMvts.filter(x=>x.type==='sortie').reduce((s,x)=>s+x.quantite,0),
+      entrees: mMvts.filter(x=>x.type==='entree').reduce((s,x)=>s+x.quantite,0)
+    };
+  }).reverse();
+
+  // AI: Articles to order MORE (high demand, low stock)
+  const orderMore = [];
+  const orderLess = [];
+  arts.forEach(a => {
+    if (a.min_stock === 0) return;
+    const last3m = months.slice(0,3);
+    const avgSorties = last3m.reduce((s,m) => s + mvts.filter(x=>x.article_id===a.id&&x.type==='sortie'&&mKey(x.date)===m).reduce((ss,x)=>ss+x.quantite,0), 0) / 3;
+    const ratio = a.stock > 0 ? avgSorties / a.stock : avgSorties > 0 ? 10 : 0;
+    if (avgSorties >= 3 && a.stock < avgSorties * 2) {
+      orderMore.push({art:a, avg:Math.round(avgSorties*10)/10, suggest:Math.ceil(avgSorties*3-a.stock)});
+    }
+    if (a.stock > 0 && avgSorties === 0) {
+      const last6 = months.reduce((s,m) => s + mvts.filter(x=>x.article_id===a.id&&x.type==='sortie'&&mKey(x.date)===m).reduce((ss,x)=>ss+x.quantite,0), 0);
+      if (last6 === 0 && a.stock > a.min_stock) {
+        orderLess.push({art:a, stock:a.stock, months:6});
+      }
+    }
+  });
+  orderMore.sort((a,b) => b.avg - a.avg);
+  orderLess.sort((a,b) => b.stock - a.stock);
+
+  // AI: Detect frequent/duplicate requesters
+  const demandesByPerson = {};
+  demandes.forEach(d => {
+    const key = (d.proclamateur||'').toLowerCase();
+    if (!key) return;
+    if (!demandesByPerson[key]) demandesByPerson[key] = [];
+    demandesByPerson[key].push(d);
+  });
+  const alerts = [];
+  Object.entries(demandesByPerson).forEach(([person, dems]) => {
+    // Check for same article within 2 months
+    const artMap = {};
+    dems.forEach(d => {
+      const artKey = d.article_id || d.custom_nom || '';
+      if (!artKey) return;
+      if (!artMap[artKey]) artMap[artKey] = [];
+      artMap[artKey].push(d);
+    });
+    Object.entries(artMap).forEach(([artKey, artDems]) => {
+      if (artDems.length >= 2) {
+        const dates = artDems.map(x => new Date(x.date || x.created_at)).sort((a,b)=>a-b);
+        for (let i = 1; i < dates.length; i++) {
+          const diffDays = (dates[i] - dates[i-1]) / (1000*60*60*24);
+          if (diffDays < 60) {
+            const art = arts.find(a => a.id === artKey);
+            alerts.push({
+              person: dems[0].proclamateur,
+              type: 'duplicate',
+              msg: 'a commandé ' + (art ? art.nom : (artDems[0].custom_nom||'?')) + ' ' + artDems.length + ' fois en moins de 2 mois',
+              count: artDems.length
+            });
+            break;
+          }
+        }
+      }
+    });
+    // Check for too many requests overall (>3 in a month)
+    const byMonth = {};
+    dems.forEach(d => { const m = mKey(d.date||d.created_at||''); if(m){byMonth[m]=(byMonth[m]||0)+1;} });
+    Object.entries(byMonth).forEach(([m,cnt]) => {
+      if (cnt > 3) {
+        alerts.push({person:dems[0].proclamateur, type:'frequent', msg:'a fait '+cnt+' demandes en '+fmtMonth(m), count:cnt});
+      }
+    });
+  });
+
+  return {topArts, trends, orderMore: orderMore.slice(0,8), orderLess: orderLess.slice(0,8), alerts};
+}
+
+function AnalyticsPanel({arts, mvts, demandes}) {
+  const [filterMonth, setFilterMonth] = useState(nowM());
+  const analysis = analyzeData(arts, mvts, demandes);
+
+  // Top articles for selected month
+  const selMvts = mvts.filter(m => mKey(m.date) === filterMonth && m.type === 'sortie');
+  const artMap = {};
+  selMvts.forEach(m => { artMap[m.article_id] = (artMap[m.article_id]||0) + m.quantite; });
+  const topFiltered = Object.entries(artMap).map(([id,qty]) => ({art:arts.find(a=>a.id===id), qty})).filter(x=>x.art).sort((a,b)=>b.qty-a.qty).slice(0,10);
+  const maxQty = topFiltered.length > 0 ? topFiltered[0].qty : 1;
+
+  // Generate month options
+  const monthOpts = [];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const v = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    monthOpts.push({value:v, label:fmtMonth(v)});
+  }
+
+  return h('div',{style:{marginTop:8}},
+    // Top publications
+    h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
+      h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}},
+        h('div',{style:{fontSize:13,fontWeight:700,color:C.navy}},'📊 Publications les plus demandées'),
+        h('select',{value:filterMonth,onChange:e=>setFilterMonth(e.target.value),style:{padding:'4px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:10,outline:'none',background:'#fff'}},
+          ...monthOpts.map(o=>h('option',{key:o.value,value:o.value},o.label)))),
+      topFiltered.length===0 ? h('div',{style:{fontSize:11,color:C.muted,textAlign:'center',padding:'10px'}},'Aucune sortie ce mois.')
+      : topFiltered.map((t,i) => h('div',{key:t.art.id,style:{marginBottom:6}},
+        h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:2}},
+          h('div',{style:{fontSize:11,fontWeight:500,color:C.text,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
+            h('span',{style:{color:C.gold,fontWeight:700,marginRight:4}},(i+1)+'.'),t.art.nom),
+          h('span',{style:{fontSize:12,fontWeight:700,color:C.navy,marginLeft:6}},t.qty)),
+        h('div',{style:{height:4,background:C.border,borderRadius:2}},
+          h('div',{style:{height:4,background:i<3?C.gold:C.navy,borderRadius:2,width:Math.round(t.qty/maxQty*100)+'%'}}))))),
+
+    // AI Suggestions
+    (analysis.orderMore.length > 0 || analysis.orderLess.length > 0) && h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
+      h('div',{style:{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}},'🤖 Suggestions IA'),
+      analysis.orderMore.length > 0 && h('div',{style:{marginBottom:10}},
+        h('div',{style:{fontSize:11,fontWeight:600,color:C.ok,marginBottom:6}},'📈 Commander davantage :'),
+        ...analysis.orderMore.map(x => h('div',{key:x.art.id,style:{padding:'6px 8px',background:C.ok+'08',borderRadius:6,marginBottom:3,display:'flex',alignItems:'center',justifyContent:'space-between'}},
+          h('div',{style:{fontSize:11,color:C.text}},x.art.nom),
+          h('div',{style:{fontSize:10,color:C.ok,fontWeight:600,whiteSpace:'nowrap'}},x.avg+'/mois · stock: '+x.art.stock+' · suggéré: +'+x.suggest)))),
+      analysis.orderLess.length > 0 && h('div',null,
+        h('div',{style:{fontSize:11,fontWeight:600,color:C.warn,marginBottom:6}},'📉 Stock dormant (aucune sortie depuis 6 mois) :'),
+        ...analysis.orderLess.map(x => h('div',{key:x.art.id,style:{padding:'6px 8px',background:C.warn+'08',borderRadius:6,marginBottom:3,display:'flex',alignItems:'center',justifyContent:'space-between'}},
+          h('div',{style:{fontSize:11,color:C.text}},x.art.nom),
+          h('div',{style:{fontSize:10,color:C.warn,fontWeight:500}},'Stock: '+x.stock+' · 0 sortie en '+x.months+' mois'))))),
+
+    // AI Alerts on requesters
+    analysis.alerts.length > 0 && h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
+      h('div',{style:{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}},'⚠ Alertes demandes'),
+      ...analysis.alerts.map((a,i) => h('div',{key:i,style:{padding:'8px 10px',background:a.type==='duplicate'?C.danger+'08':C.warn+'08',borderRadius:8,marginBottom:4,border:'1px solid '+(a.type==='duplicate'?C.danger:C.warn)+'22'}},
+        h('div',{style:{fontSize:12,fontWeight:600,color:a.type==='duplicate'?C.danger:C.warn}},a.person),
+        h('div',{style:{fontSize:11,color:C.muted}},a.msg))))
+  );
+}
+
+function Dashboard({arts,mvts,asm,user,setPage,demandes}) {
   const alerts = arts.filter(a => getSt(a) !== 'ok');
   const tot = arts.reduce((s,a) => s+a.stock, 0);
   const mm = mvts.filter(m => mKey(m.date) === nowM());
@@ -709,6 +866,21 @@ function Dashboard({arts,mvts,asm,user,setPage}) {
   const on = navigator.onLine;
 
   return h('div',{style:{padding:'16px 14px 20px'}},
+    (() => {
+      const ae = localStorage.getItem('inv_alert_enabled')==='true';
+      const ad = parseInt(localStorage.getItem('inv_alert_day')||'25');
+      const today = new Date();
+      const isAlertDay = ae && today.getDate() === ad;
+      const dismissKey = 'inv_alert_dismiss_'+today.getFullYear()+'-'+(today.getMonth()+1);
+      const dismissed = localStorage.getItem(dismissKey)==='true';
+      return isAlertDay && !dismissed ? h('div',{style:{background:C.gold+'15',border:'1px solid '+C.gold+'33',borderRadius:10,padding:'10px 14px',marginBottom:12,display:'flex',alignItems:'center',gap:8}},
+        h('span',{style:{fontSize:16}},'📋'),
+        h('div',{style:{flex:1}},
+          h('div',{style:{fontSize:12,fontWeight:600,color:C.text}},'Rappel : Inventaire mensuel'),
+          h('div',{style:{fontSize:11,color:C.muted}},"N'oubliez pas d'exporter et d'envoyer l'inventaire !")),
+        h('button',{onClick:()=>{setPage('inventaire');},style:{padding:'5px 10px',borderRadius:6,background:C.gold,color:'#fff',fontSize:10,fontWeight:600,cursor:'pointer',border:'none'}},'Exporter'),
+        h('span',{onClick:()=>{localStorage.setItem(dismissKey,'true');location.reload();},style:{cursor:'pointer',color:C.muted,fontSize:14}},'✕')) : null;
+    })(),
     h('div',{style:{marginBottom:18}},
       h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between'}},
         h('div',{style:{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase'}},'◆ INVENTORY'),
@@ -752,7 +924,8 @@ function Dashboard({arts,mvts,asm,user,setPage}) {
       })),
     rec.length===0 && h('div',{style:{textAlign:'center',padding:'30px 16px',color:C.muted}},
       h('div',{style:{fontSize:36,marginBottom:8}},'📦'),
-      h('div',{style:{fontSize:13}},'Enregistrez votre premier mouvement pour voir l\'activité ici.'))
+      h('div',{style:{fontSize:13}},'Enregistrez votre premier mouvement pour voir l\'activité ici.')),
+    h(AnalyticsPanel,{arts,mvts,demandes:demandes||[]})
   );
 }
 
@@ -888,7 +1061,7 @@ function InventairePage({arts,mvts,asm}) {
     const ent = mMvts.filter(m=>m.type==='entree'&&m.article_id===a.id).reduce((s,m)=>s+m.quantite,0);
     const sort = mMvts.filter(m=>m.type==='sortie'&&m.article_id===a.id).reduce((s,m)=>s+m.quantite,0);
     return {...a,ent,sort,act:isCur?a.stock:null,ini:isCur?(a.stock-ent+sort):null,has:ent>0||sort>0||a.stock>0};
-  }).filter(a=>a.has||a.stock>0);
+  });
   const tEnt = rows.reduce((s,a)=>s+a.ent,0);
   const tSort = rows.reduce((s,a)=>s+a.sort,0);
 
@@ -904,7 +1077,7 @@ function InventairePage({arts,mvts,asm}) {
     h('div',{style:{background:C.navy,borderRadius:'8px 8px 0 0',padding:'6px 10px',display:'grid',gridTemplateColumns:'1fr 42px 42px 42px 42px',gap:3}},
       h('div',{style:{fontSize:9,color:'#aab',fontWeight:600}},'PUBLICATION'),
       ...['INIT','ENT','SORT','STOCK'].map((t,i)=>h('div',{key:t,style:{fontSize:9,color:i===1?'#7fc97f':i===2?'#f4a261':i===3?'#fff':'#aab',fontWeight:600,textAlign:'center'}},t))),
-    rows.length===0 ? h('div',{style:{background:'#fff',borderRadius:'0 0 8px 8px',padding:'24px',textAlign:'center',color:C.muted,fontSize:12,border:'1px solid '+C.border,borderTop:'none'}},'Aucun mouvement pour ce mois')
+    rows.length===0 ? h('div',{style:{background:'#fff',borderRadius:'0 0 8px 8px',padding:'24px',textAlign:'center',color:C.muted,fontSize:12,border:'1px solid '+C.border,borderTop:'none'}},'Aucune publication dans cette catégorie')
     : rows.map((a,i) => h('div',{key:a.id,style:{background:i%2===0?'#fff':'#FAFAF8',padding:'7px 10px',borderBottom:'1px solid #F0EDE8',borderLeft:'1px solid '+C.border,borderRight:'1px solid '+C.border,display:'grid',gridTemplateColumns:'1fr 42px 42px 42px 42px',gap:3,...(i===rows.length-1?{borderRadius:'0 0 8px 8px'}:{})}},
       h('div',null,h('div',{style:{fontSize:11,fontWeight:500,color:C.text,lineHeight:1.3}},a.nom),h('div',{style:{fontSize:9,color:C.muted}},a.sym)),
       h('div',{style:{textAlign:'center',fontSize:12,fontWeight:500,color:C.muted,alignSelf:'center'}},a.ini!=null?a.ini:'-'),
@@ -926,6 +1099,8 @@ function SettingsPage({asm,user,membres,arts,asmId,onRefresh,onLogout}) {
   const [showAM,setShowAM] = useState(false);
   const [nm,setNm] = useState({prenom:'',nom:'',username:'',tel:'',role:'assistant',pin:'1234'});
   const [showNewArt,setShowNewArt] = useState(false);
+  const [alertDay,setAlertDay] = useState(localStorage.getItem('inv_alert_day')||'25');
+  const [alertEnabled,setAlertEnabled] = useState(localStorage.getItem('inv_alert_enabled')==='true');
   const [nw,setNw] = useState({code:'',nom:'',sym:'',cat:'Bibles',stock:'0',min_stock:'5'});
 
   const save = async (msg) => { setSaved(msg); setTimeout(()=>setSaved(''),2000); };
@@ -945,7 +1120,7 @@ function SettingsPage({asm,user,membres,arts,asmId,onRefresh,onLogout}) {
       tBtn('profil','Profil'),tBtn('assemblee','Assemblée'),
       hasPerm(user.role,'membres',user.perms) && tBtn('membres','Membres'),
       hasPerm(user.role,'ajout_art',user.perms) && tBtn('articles','Articles'),
-      hasPerm(user.role,'acces',user.perms) && tBtn('acces','Accès')),
+      hasPerm(user.role,'acces',user.perms) && tBtn('acces','Accès'),tBtn('alertes','Alertes')),
     saved && h('div',{style:{background:'#EEF8F2',borderRadius:7,padding:'7px 10px',marginBottom:10,display:'flex',alignItems:'center',gap:5}},h('span',{style:{color:C.ok}},'✓'),h('span',{style:{fontSize:11,color:C.ok,fontWeight:500}},saved)),
 
     // PROFIL
@@ -1511,7 +1686,36 @@ function DemandesPage({arts, demandes, asmId, onRefresh}) {
           d.statut==='en_attente' && h('button',{onClick:()=>updateStatut(d.id,'commande'),style:{padding:'4px 10px',borderRadius:6,background:C.navy+'11',color:C.navy,fontSize:10,fontWeight:500,cursor:'pointer',border:'1px solid '+C.navy+'22'}},'→ Commandé'),
           d.statut==='commande' && h('button',{onClick:()=>updateStatut(d.id,'recu'),style:{padding:'4px 10px',borderRadius:6,background:C.ok+'11',color:C.ok,fontSize:10,fontWeight:500,cursor:'pointer',border:'1px solid '+C.ok+'22'}},'→ Reçu')));
     })
-  );
+  ,
+
+    tab==='alertes' && h('div',null,
+      h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
+        h('div',{style:{fontSize:13,fontWeight:600,color:C.text,marginBottom:10}},'Rappel d\'inventaire mensuel'),
+        h('div',{style:{fontSize:11,color:C.muted,marginBottom:14,lineHeight:1.5}},'Configurez une date de rappel pour vous souvenir d\'envoyer l\'inventaire au responsable chaque mois.'),
+        h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:14}},
+          h('div',{onClick:()=>{const v=!alertEnabled;setAlertEnabled(v);localStorage.setItem('inv_alert_enabled',v?'true':'false');},style:{width:44,height:24,borderRadius:12,background:alertEnabled?C.ok:'#ccc',cursor:'pointer',position:'relative',transition:'all .2s'}},
+            h('div',{style:{width:20,height:20,borderRadius:10,background:'#fff',position:'absolute',top:2,left:alertEnabled?22:2,transition:'all .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}})),
+          h('div',{style:{fontSize:12,color:alertEnabled?C.text:C.muted,fontWeight:500}},alertEnabled?'Rappels activés':'Rappels désactivés')),
+        alertEnabled && h('div',null,
+          h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'JOUR DU RAPPEL (chaque mois)'),
+          h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+            h('select',{value:alertDay,onChange:e=>{setAlertDay(e.target.value);localStorage.setItem('inv_alert_day',e.target.value);},style:{flex:1,padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
+              ...Array.from({length:28},(_,i)=>h('option',{key:i+1,value:String(i+1)},'Le '+(i+1)+' du mois'))),
+            h('div',{style:{fontSize:11,color:C.muted}},'de chaque mois')),
+          h('div',{style:{marginTop:12,padding:'10px',background:C.navy+'08',borderRadius:8}},
+            h('div',{style:{fontSize:11,color:C.navy,fontWeight:500}},'Prochain rappel :'),
+            h('div',{style:{fontSize:12,color:C.text,marginTop:2}},(() => {
+              const d = parseInt(alertDay);
+              const now = new Date();
+              let next = new Date(now.getFullYear(), now.getMonth(), d);
+              if (next <= now) next = new Date(now.getFullYear(), now.getMonth()+1, d);
+              return next.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+            })()),
+            h('div',{style:{fontSize:10,color:C.muted,marginTop:4}},'Une notification apparaîtra sur le tableau de bord ce jour-là.')))),
+      h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border}},
+        h('div',{style:{fontSize:13,fontWeight:600,color:C.text,marginBottom:8}},'Comment ça marche'),
+        h('div',{style:{fontSize:11,color:C.muted,lineHeight:1.6}},
+          'Le jour configuré, un bandeau de rappel apparaîtra en haut du tableau de bord pour vous inviter à exporter et envoyer l\'inventaire mensuel. Allez dans l\'onglet Inventaire pour exporter le PDF complet du stock.'))))
 }
 
 
@@ -1692,7 +1896,7 @@ function App() {
   return h('div',{className:'app-shell',style:{display:'flex',flexDirection:'column'}},
     h('div',{style:{flex:1,overflowY:'auto'}},
       user&&user.role==='superadmin'&&h('div',{onClick:()=>{setSaMode(true);setPage('dashboard');},style:{background:C.danger+'0A',padding:'8px 14px',display:'flex',alignItems:'center',gap:6,cursor:'pointer',borderBottom:'1px solid '+C.danger+'22'}},h('span',{style:{fontSize:13}},'←'),h('span',{style:{fontSize:12,color:C.danger,fontWeight:600}},'Retour au panneau Super Admin'),asm&&h('span',{style:{fontSize:10,color:C.muted,marginLeft:'auto'}},asm.nom)),
-      page==='dashboard' && h(Dashboard,{arts,mvts,asm,user,setPage}),
+      page==='dashboard' && h(Dashboard,{arts,mvts,asm,user,setPage,demandes}),
       page==='stock' && h(StockPage,{arts,onArt:setModal}),
       page==='mouvement' && h(MouvementPage,{arts,mvts,asmId:asm.id,user,onRefresh:refresh}),
       page==='inventaire' && h(InventairePage,{arts,mvts,asm}),

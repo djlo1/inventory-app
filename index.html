@@ -370,6 +370,11 @@ function ConnexionForm({onLogin, goInscription}) {
   const [pin,setPin] = useState('');
   const [busy,setBusy] = useState(false);
   const [err,setErr] = useState('');
+  const [showReset,setShowReset] = useState(false);
+  const [resetUser,setResetUser] = useState('');
+  const [resetPin,setResetPin] = useState('');
+  const [resetAsm,setResetAsm] = useState('');
+  const [resetMsg,setResetMsg] = useState(null);
 
   const go = async () => {
     if (!username || pin.length < 4 || busy) return;
@@ -401,8 +406,25 @@ function ConnexionForm({onLogin, goInscription}) {
         style:{width:'100%',padding:'13px',borderRadius:11,background:(username&&pin.length>=4)?C.navy:'#E8E5DF',color:(username&&pin.length>=4)?'#fff':C.muted,fontSize:14,fontWeight:600,cursor:(username&&pin.length>=4)?'pointer':'not-allowed',border:'none',marginTop:4}},
         busy ? 'Connexion...' : 'Se connecter'),
       h('div',{style:{textAlign:'center',marginTop:20}},
-        h('div',{style:{fontSize:12,color:C.muted,marginBottom:6}},"Pas encore de compte ?"),
-        h('div',{onClick:goInscription,style:{fontSize:13,color:C.gold,fontWeight:600,cursor:'pointer'}},'Créer un compte →')))
+        !showReset ? h('div',null,
+          h('div',{onClick:()=>setShowReset(true),style:{fontSize:12,color:C.navy,cursor:'pointer',marginBottom:12}},'🔑 PIN oublié ?'),
+          h('div',{style:{fontSize:12,color:C.muted,marginBottom:6}},"Pas encore de compte ?"),
+          h('div',{onClick:goInscription,style:{fontSize:13,color:C.gold,fontWeight:600,cursor:'pointer'}},'Créer un compte →'))
+        : h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,textAlign:'left'}},
+          h('div',{style:{fontSize:13,fontWeight:600,color:C.navy,marginBottom:8}},'Réinitialiser le code PIN'),
+          h(Inp,{label:"NOM D'UTILISATEUR",value:resetUser,onChange:v=>setResetUser(v),placeholder:'Votre nom d\'utilisateur'}),
+          h(Inp,{label:'NOUVEAU PIN (4 chiffres)',value:resetPin,onChange:v=>setResetPin(v.replace(/\D/g,'').slice(0,4)),type:'password',placeholder:'••••'}),
+          h(Inp,{label:'NUMÉRO ASSEMBLÉE (vérification)',value:resetAsm,onChange:v=>setResetAsm(v.toUpperCase()),placeholder:'Ex: AL2261'}),
+          resetMsg && h('div',{style:{fontSize:11,color:resetMsg.ok?C.ok:C.danger,marginBottom:8,fontWeight:500}},resetMsg.text),
+          h('div',{style:{display:'flex',gap:6}},
+            h('button',{onClick:async()=>{
+              if(!resetUser||resetPin.length<4||!resetAsm){setResetMsg({ok:false,text:'Remplissez tous les champs.'});return;}
+              const{data:found}=await sb.from('membres').select('*,assemblees!inner(numero)').ilike('username',resetUser.trim()).eq('actif',true);
+              const match=found&&found.find(m=>m.assemblees&&m.assemblees.numero===resetAsm);
+              if(match){await db.updateMembre(match.id,{pin:resetPin});setResetMsg({ok:true,text:'PIN modifié ! Connectez-vous.'});setTimeout(()=>{setShowReset(false);setResetMsg(null);},2500);}
+              else{setResetMsg({ok:false,text:'Utilisateur non trouvé ou numéro assemblée incorrect.'});}
+            },style:{flex:1,padding:'10px',borderRadius:8,background:C.navy,color:'#fff',fontSize:12,fontWeight:600,cursor:'pointer',border:'none'}},'Réinitialiser'),
+            h('button',{onClick:()=>{setShowReset(false);setResetMsg(null);},style:{padding:'10px 14px',borderRadius:8,background:'#E8E5DF',color:C.text,fontSize:12,cursor:'pointer',border:'none'}},'Annuler')))))
   );
 }
 
@@ -509,19 +531,28 @@ function InscriptionForm({onLogin, goConnexion}) {
 function SuperAdminPanel({user, onSelectAsm, onLogout}) {
   const [asms, setAsms] = useState([]);
   const [membres, setMembres] = useState([]);
-  const [tab, setTab] = useState('assemblees');
+  const [tab, setTab] = useState('dashboard');
   const [showNewAsm, setShowNewAsm] = useState(false);
   const [newAsm, setNewAsm] = useState({nom:'',numero:'',ville:'',departement:'',pays:'Bénin',langue:'Français'});
   const [showAddMbr, setShowAddMbr] = useState(false);
   const [addMbrAsm, setAddMbrAsm] = useState('');
   const [newMbr, setNewMbr] = useState({prenom:'',nom:'',username:'',tel:'',role:'assistant',pin:'1234'});
   const [busy, setBusy] = useState(false);
+  const [editMbrId, setEditMbrId] = useState(null);
 
+  const [stats, setStats] = useState({arts:0,mvts:0,demandes:0,cmds:0});
   useEffect(() => { loadAll(); }, []);
   const loadAll = async () => {
     const {data:a} = await sb.from('assemblees').select('*').order('nom');
     const {data:m} = await sb.from('membres').select('*').order('assemblee_id,prenom');
     setAsms(a||[]); setMembres(m||[]);
+    // Stats globales
+    const {count:artC} = await sb.from('articles').select('*',{count:'exact',head:true});
+    const {count:mvtC} = await sb.from('mouvements').select('*',{count:'exact',head:true});
+    const {count:demC} = await sb.from('demandes').select('*',{count:'exact',head:true});
+    const {count:cmdC} = await sb.from('commandes').select('*',{count:'exact',head:true});
+    setStats({arts:artC||0,mvts:mvtC||0,demandes:demC||0,cmds:cmdC||0});
+    // Per-assembly stats
   };
 
   const createAsm = async () => {
@@ -556,15 +587,46 @@ function SuperAdminPanel({user, onSelectAsm, onLogout}) {
     h('div',{style:{fontSize:20,fontWeight:800,color:C.navy,marginBottom:4}},'Panneau d\'administration'),
     h('div',{style:{fontSize:12,color:C.muted,marginBottom:14}},user.prenom+' '+user.nom+' · Super Admin'),
 
-    h('div',{style:{display:'flex',gap:8,marginBottom:14}},
-      h('div',{style:{flex:1,background:'#fff',borderRadius:10,padding:'12px',border:'1px solid '+C.border,textAlign:'center'}},
-        h('div',{style:{fontSize:24,fontWeight:700,color:C.navy}},asms.length),
-        h('div',{style:{fontSize:10,color:C.muted}},'Assemblées')),
-      h('div',{style:{flex:1,background:'#fff',borderRadius:10,padding:'12px',border:'1px solid '+C.border,textAlign:'center'}},
-        h('div',{style:{fontSize:24,fontWeight:700,color:C.navy}},membres.length),
-        h('div',{style:{fontSize:10,color:C.muted}},'Membres'))),
+    
 
-    h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:8,padding:3,marginBottom:14}},tBtn('assemblees','Assemblées'),tBtn('membres','Tous les membres')),
+    h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:8,padding:3,marginBottom:14}},tBtn('dashboard','Tableau de bord'),tBtn('assemblees','Assemblées'),tBtn('membres','Membres')),
+
+    tab==='dashboard' && h('div',null,
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}},
+        h('div',{style:{background:'#fff',borderRadius:10,padding:'12px',border:'1px solid '+C.border,textAlign:'center'}},
+          h('div',{style:{fontSize:28,fontWeight:700,color:C.navy}},asms.length),
+          h('div',{style:{fontSize:10,color:C.muted}},'Assemblées')),
+        h('div',{style:{background:'#fff',borderRadius:10,padding:'12px',border:'1px solid '+C.border,textAlign:'center'}},
+          h('div',{style:{fontSize:28,fontWeight:700,color:C.navy}},membres.length),
+          h('div',{style:{fontSize:10,color:C.muted}},'Membres')),
+        h('div',{style:{background:'#fff',borderRadius:10,padding:'12px',border:'1px solid '+C.border,textAlign:'center'}},
+          h('div',{style:{fontSize:28,fontWeight:700,color:C.gold}},stats.arts),
+          h('div',{style:{fontSize:10,color:C.muted}},'Articles')),
+        h('div',{style:{background:'#fff',borderRadius:10,padding:'12px',border:'1px solid '+C.border,textAlign:'center'}},
+          h('div',{style:{fontSize:28,fontWeight:700,color:C.ok}},stats.mvts),
+          h('div',{style:{fontSize:10,color:C.muted}},'Mouvements'))),
+      h('div',{style:{display:'flex',gap:8,marginBottom:14}},
+        h('div',{style:{flex:1,background:'#fff',borderRadius:10,padding:'12px',border:'1px solid '+C.border,textAlign:'center'}},
+          h('div',{style:{fontSize:24,fontWeight:700,color:C.warn}},stats.demandes),
+          h('div',{style:{fontSize:10,color:C.muted}},'Demandes spéciales')),
+        h('div',{style:{flex:1,background:'#fff',borderRadius:10,padding:'12px',border:'1px solid '+C.border,textAlign:'center'}},
+          h('div',{style:{fontSize:24,fontWeight:700,color:C.navy}},stats.cmds),
+          h('div',{style:{fontSize:10,color:C.muted}},'Commandes'))),
+      h('div',{style:{fontSize:14,fontWeight:700,color:C.navy,marginBottom:10}},'Assemblées locales'),
+      ...asms.map(a => {
+        const mCount = membres.filter(m => m.assemblee_id===a.id).length;
+        const actifs = membres.filter(m => m.assemblee_id===a.id && m.actif!==false).length;
+        return h('div',{key:a.id,style:{background:'#fff',borderRadius:10,padding:'12px 14px',marginBottom:6,border:'1px solid '+C.border}},
+          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}},
+            h('div',null,
+              h('div',{style:{fontSize:13,fontWeight:600,color:C.text}},a.nom),
+              h('div',{style:{fontSize:10,color:C.muted}},(a.numero||'')+(a.ville?' · '+a.ville:''))),
+            h('button',{onClick:()=>onSelectAsm(a),style:{padding:'5px 10px',borderRadius:6,background:C.gold,color:'#fff',fontSize:10,fontWeight:600,cursor:'pointer',border:'none'}},'Accéder →')),
+          h('div',{style:{display:'flex',gap:8}},
+            h('div',{style:{fontSize:10,color:C.muted}},mCount+' membre(s)'),
+            h('div',{style:{fontSize:10,color:C.ok}},actifs+' actif(s)'),
+            mCount-actifs>0&&h('div',{style:{fontSize:10,color:C.danger}},(mCount-actifs)+' désactivé(s)')));
+      })),
 
     tab==='assemblees' && h('div',null,
       h('button',{onClick:()=>setShowNewAsm(!showNewAsm),style:{width:'100%',padding:'10px',borderRadius:9,background:showNewAsm?'#E8E5DF':C.navy,color:showNewAsm?C.text:'#fff',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',marginBottom:12}},showNewAsm?'Annuler':'+ Nouvelle assemblée'),
@@ -604,13 +666,35 @@ function SuperAdminPanel({user, onSelectAsm, onLogout}) {
         const asmMbrs = membres.filter(m => m.assemblee_id===a.id);
         if (asmMbrs.length===0) return null;
         return h('div',{key:a.id,style:{marginBottom:12}},
-          h('div',{style:{fontSize:12,fontWeight:700,color:C.navy,padding:'6px 0',borderBottom:'2px solid '+C.gold+'44',marginBottom:6}},a.nom+' ('+a.numero+')'),
-          ...asmMbrs.map(m => h('div',{key:m.id,style:{background:'#fff',borderRadius:8,padding:'9px 12px',marginBottom:4,border:'1px solid '+C.border,display:'flex',alignItems:'center',gap:8}},
-            h('div',{style:{width:32,height:32,borderRadius:16,background:m.actif!==false?C.navy:'#ccc',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:12,fontWeight:700}},(m.prenom||'?')[0].toUpperCase()),
-            h('div',{style:{flex:1}},
-              h('div',{style:{fontSize:12,fontWeight:500,color:m.actif!==false?C.text:C.muted}},m.prenom+' '+m.nom),
-              h('div',{style:{fontSize:10,color:C.muted}},roleLabel(m.role)+(m.username?' · @'+m.username:'')+(m.actif===false?' · Désactivé':''))),
-            h('button',{onClick:async()=>{await db.updateMembre(m.id,{actif:m.actif===false?true:false});await loadAll();},style:{padding:'4px 8px',borderRadius:5,background:m.actif!==false?'#FFF0EE':'#EEF8F2',color:m.actif!==false?C.danger:C.ok,fontSize:9,fontWeight:600,cursor:'pointer',border:'none'}},m.actif!==false?'Désact.':'Activer'))));
+          h('div',{style:{fontSize:12,fontWeight:700,color:C.navy,padding:'6px 0',borderBottom:'2px solid '+C.gold+'44',marginBottom:6}},a.nom+' ('+(a.numero||'')+')'+(asmMbrs.length?' · '+asmMbrs.length+' membre(s)':'')),
+          ...asmMbrs.map(m => {
+            const isExp = editMbrId===m.id;
+            return h('div',{key:m.id,style:{background:'#fff',borderRadius:10,marginBottom:4,border:'1px solid '+(m.actif===false?C.danger+'33':C.border),overflow:'hidden'}},
+              h('div',{onClick:()=>setEditMbrId(isExp?null:m.id),style:{padding:'9px 12px',cursor:'pointer',display:'flex',alignItems:'center',gap:8}},
+                h('div',{style:{width:32,height:32,borderRadius:16,background:m.actif!==false?C.navy:'#ccc',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:12,fontWeight:700}},(m.prenom||'?')[0].toUpperCase()),
+                h('div',{style:{flex:1}},
+                  h('div',{style:{fontSize:12,fontWeight:500,color:m.actif!==false?C.text:C.muted}},m.prenom+' '+m.nom),
+                  h('div',{style:{fontSize:10,color:C.muted}},roleLabel(m.role)+(m.username?' · @'+m.username:'')+(m.actif===false?' · ⛔ Désactivé':''))),
+                h('span',{style:{color:C.muted,fontSize:10}},isExp?'▲':'▼')),
+              isExp && h('div',{style:{padding:'10px 12px',borderTop:'1px solid '+C.border,background:'#FAFAF8'}},
+                h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:10}},
+                  h('div',null,h('div',{style:{fontSize:9,color:C.muted,fontWeight:600}},'PRÉNOM'),h('div',{style:{fontSize:12,color:C.text}},m.prenom)),
+                  h('div',null,h('div',{style:{fontSize:9,color:C.muted,fontWeight:600}},'NOM'),h('div',{style:{fontSize:12,color:C.text}},m.nom)),
+                  h('div',null,h('div',{style:{fontSize:9,color:C.muted,fontWeight:600}},'USERNAME'),h('div',{style:{fontSize:12,color:C.navy,fontWeight:500}},'@'+(m.username||'-'))),
+                  h('div',null,h('div',{style:{fontSize:9,color:C.muted,fontWeight:600}},'PIN'),h('div',{style:{fontSize:12,color:C.gold,fontWeight:600}},m.pin||'-')),
+                  h('div',null,h('div',{style:{fontSize:9,color:C.muted,fontWeight:600}},'RÔLE'),h('div',{style:{fontSize:11,color:C.text}},roleLabel(m.role))),
+                  h('div',null,h('div',{style:{fontSize:9,color:C.muted,fontWeight:600}},'TÉLÉPHONE'),h('div',{style:{fontSize:11,color:C.text}},m.tel||'-')),
+                  h('div',null,h('div',{style:{fontSize:9,color:C.muted,fontWeight:600}},'STATUT'),h('div',{style:{fontSize:11,color:m.actif!==false?C.ok:C.danger,fontWeight:500}},m.actif!==false?'Actif':'Désactivé')),
+                  h('div',null,h('div',{style:{fontSize:9,color:C.muted,fontWeight:600}},'ASSEMBLÉE'),h('div',{style:{fontSize:11,color:C.text}},a.nom))),
+                h('div',{style:{fontSize:10,fontWeight:600,color:C.text,marginBottom:6}},'Modifier :'),
+                h('div',{style:{display:'flex',gap:6,marginBottom:8}},
+                  h('div',{style:{flex:1}},h('label',{style:{fontSize:9,color:C.muted,fontWeight:600,display:'block',marginBottom:2}},'USERNAME'),h('input',{defaultValue:m.username||'',onBlur:async e=>{const v=e.target.value.replace(/\s/g,'').toLowerCase();if(v&&v!==m.username){await db.updateMembre(m.id,{username:v});await loadAll();}},style:{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none'}})),
+                  h('div',{style:{flex:1}},h('label',{style:{fontSize:9,color:C.muted,fontWeight:600,display:'block',marginBottom:2}},'PIN'),h('input',{defaultValue:m.pin||'',onBlur:async e=>{const v=e.target.value.replace(/\D/g,'').slice(0,4);if(v&&v!==m.pin){await db.updateMembre(m.id,{pin:v});await loadAll();}},maxLength:4,style:{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',fontWeight:600,letterSpacing:4}})),
+                  h('div',{style:{flex:1}},h('label',{style:{fontSize:9,color:C.muted,fontWeight:600,display:'block',marginBottom:2}},'RÔLE'),h('select',{defaultValue:m.role,onChange:async e=>{await db.updateMembre(m.id,{role:e.target.value});await loadAll();},style:{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:10,outline:'none',background:'#fff'}},...ROLES.map(r=>h('option',{key:r.id,value:r.id},r.label))))),
+                h('div',{style:{display:'flex',gap:6,marginTop:4}},
+                  h('button',{onClick:async()=>{await db.updateMembre(m.id,{actif:m.actif===false?true:false});await loadAll();},style:{flex:1,padding:'7px',borderRadius:7,background:m.actif!==false?'#FFF0EE':'#EEF8F2',color:m.actif!==false?C.danger:C.ok,fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},m.actif!==false?'Désactiver':'Activer'),
+                  h('button',{onClick:async()=>{if(confirm('Supprimer définitivement '+m.prenom+' '+m.nom+' ? Cette action est irréversible.')){await db.deleteMembre(m.id);await loadAll();}},style:{flex:1,padding:'7px',borderRadius:7,background:C.danger,color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},'🗑 Supprimer'))));
+          }));
       }).filter(Boolean))
   );
 }

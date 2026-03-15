@@ -219,6 +219,45 @@ const db = {
     return data;
   },
 
+  // Commandes
+  async getCommandes(assemblee_id) {
+    const {data} = await sb.from('commandes').select('*').eq('assemblee_id', assemblee_id).order('created_at',{ascending:false});
+    return data || [];
+  },
+  async createCommande(c) {
+    const {data,error} = await sb.from('commandes').insert(c).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async updateCommande(id, fields) {
+    await sb.from('commandes').update(fields).eq('id', id);
+  },
+  async getCommandeItems(commande_id) {
+    const {data} = await sb.from('commandes_items').select('*').eq('commande_id', commande_id);
+    return data || [];
+  },
+  async insertCommandeItems(items) {
+    await sb.from('commandes_items').insert(items);
+  },
+
+  // Inter-assemblée
+    async getInterRecu(assemblee_id) {
+    const {data} = await sb.from('commandes_inter').select('*').eq('to_assemblee_id', assemblee_id).order('created_at',{ascending:false});
+    return data || [];
+  },
+  async getInterEnvoye(assemblee_id) {
+    const {data} = await sb.from('commandes_inter').select('*').eq('from_assemblee_id', assemblee_id).order('created_at',{ascending:false});
+    return data || [];
+  },
+  async createInter(item) {
+    const {data,error} = await sb.from('commandes_inter').insert(item).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async updateInter(id, fields) {
+    await sb.from('commandes_inter').update(fields).eq('id', id);
+  },
+
   // Demandes
   async getDemandes(assemblee_id) {
     const {data} = await sb.from('demandes').select('*').eq('assemblee_id', assemblee_id).order('created_at',{ascending:false});
@@ -815,12 +854,39 @@ function genPDF(title, subtitle, headers, rows, filename) {
 // ═══════════════════════════════════════
 // COMMANDES
 // ═══════════════════════════════════════
-function CommandesPage({arts, mvts, demandes, asmId, asm, onRefresh}) {
+function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
+  const [tab, setTab] = useState('generer');
+  const [cmds, setCmds] = useState([]);
   const [items, setItems] = useState([]);
   const [generated, setGenerated] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [showNew, setShowNew] = useState(false);
   const [addId, setAddId] = useState('');
   const [addQty, setAddQty] = useState(1);
+  const [nw, setNw] = useState({code:'',nom:'',sym:'',cat:'Bibles',quantite:1});
+  const [expandedCmd, setExpandedCmd] = useState(null);
+  const [cmdItems, setCmdItems] = useState({});
+  const [busy, setBusy] = useState(false);
+  // Inter
+  const [interTab, setInterTab] = useState('recu');
+  const [interRecu, setInterRecu] = useState([]);
+  const [interEnvoye, setInterEnvoye] = useState([]);
+  const [allAsm, setAllAsm] = useState([]);
+  const [showInterForm, setShowInterForm] = useState(false);
+  const [interF, setInterF] = useState({to_id:'',code:'',nom:'',sym:'',quantite:1,notes:''});
+
+  useEffect(() => { loadAll(); }, []);
+  const loadAll = async () => {
+    const [c, ir, ie, aa] = await Promise.all([db.getCommandes(asmId), db.getInterRecu(asmId), db.getInterEnvoye(asmId), db.getAssemblees()]);
+    setCmds(c); setInterRecu(ir); setInterEnvoye(ie); setAllAsm(aa.filter(a => a.id !== asmId));
+  };
+
+  const loadCmdItems = async (cmdId) => {
+    if (cmdItems[cmdId]) { setExpandedCmd(expandedCmd===cmdId?null:cmdId); return; }
+    const items = await db.getCommandeItems(cmdId);
+    setCmdItems(prev => ({...prev, [cmdId]: items}));
+    setExpandedCmd(cmdId);
+  };
 
   const generate = () => {
     const suggestions = [];
@@ -830,16 +896,18 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, onRefresh}) {
       const sortiesMois = moisMvts.reduce((s,m) => s+m.quantite, 0);
       const besoin = Math.max(a.min_stock * 2 - a.stock, sortiesMois * 3 - a.stock, 0);
       if (besoin > 0 || a.stock < a.min_stock) {
-        suggestions.push({article_id:a.id, quantite:Math.max(besoin, a.min_stock), code:a.code, nom:a.nom, sym:a.sym, stock:a.stock, min:a.min_stock});
+        suggestions.push({article_id:a.id, code:a.code, nom:a.nom, sym:a.sym||'', cat:a.cat, quantite:Math.max(besoin, a.min_stock), stock:a.stock});
       }
     });
-    // Add pending special requests
     demandes.filter(d => d.statut==='en_attente').forEach(d => {
       const art = arts.find(a => a.id===d.article_id);
       if (!art) return;
-      const existing = suggestions.find(s => s.article_id===d.article_id);
-      if (existing) { existing.quantite += d.quantite; }
-      else { suggestions.push({article_id:art.id, quantite:d.quantite, code:art.code, nom:art.nom, sym:art.sym, stock:art.stock, min:art.min_stock, special:true}); }
+      const ex = suggestions.find(s => s.article_id===d.article_id);
+      if (ex) { ex.quantite += d.quantite; ex.is_special = true; ex.proclamateur = (ex.proclamateur ? ex.proclamateur+', ' : '') + d.proclamateur; }
+      else { suggestions.push({article_id:art.id, code:art.code, nom:art.nom, sym:art.sym||'', cat:art.cat, quantite:d.quantite, stock:art.stock, is_special:true, proclamateur:d.proclamateur}); }
+    });
+    interRecu.filter(r => r.statut==='acceptee').forEach(r => {
+      suggestions.push({article_id:null, code:r.code, nom:r.nom+' (pour autre assemblée)', sym:r.sym||'', cat:'', quantite:r.quantite, stock:0, is_inter:true});
     });
     setItems(suggestions);
     setGenerated(true);
@@ -849,64 +917,193 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, onRefresh}) {
     if (!addId) return;
     const art = arts.find(a => a.id===addId);
     if (!art) return;
-    const existing = items.find(i => i.article_id===addId);
-    if (existing) { setItems(items.map(i => i.article_id===addId ? {...i, quantite:i.quantite+parseInt(addQty)||1} : i)); }
-    else { setItems([...items, {article_id:art.id, quantite:parseInt(addQty)||1, code:art.code, nom:art.nom, sym:art.sym, stock:art.stock, min:art.min_stock}]); }
+    const ex = items.find(i => i.article_id===addId);
+    if (ex) { setItems(items.map(i => i.article_id===addId ? {...i, quantite:i.quantite+(parseInt(addQty)||1)} : i)); }
+    else { setItems([...items, {article_id:art.id, code:art.code, nom:art.nom, sym:art.sym||'', cat:art.cat, quantite:parseInt(addQty)||1, stock:art.stock}]); }
     setAddId(''); setAddQty(1); setShowAdd(false);
   };
 
+  const addCustom = () => {
+    if (!nw.code || !nw.nom) return;
+    setItems([...items, {article_id:null, code:nw.code, nom:nw.nom, sym:nw.sym, cat:nw.cat, quantite:parseInt(nw.quantite)||1, stock:0, custom:true}]);
+    setNw({code:'',nom:'',sym:'',cat:'Bibles',quantite:1}); setShowNew(false);
+  };
+
+  const saveCommande = async () => {
+    if (items.length===0 || busy) return;
+    setBusy(true);
+    try {
+      const cmd = await db.createCommande({assemblee_id:asmId, statut:'en_attente', notes:'Commande du '+new Date().toLocaleDateString('fr-FR')});
+      const rows = items.map(it => ({commande_id:cmd.id, article_id:it.article_id, code:it.code, nom:it.nom, sym:it.sym||'', cat:it.cat||'', quantite:it.quantite, is_special:!!it.is_special, proclamateur:it.proclamateur||null}));
+      await db.insertCommandeItems(rows);
+      demandes.filter(d=>d.statut==='en_attente').forEach(async d => { await db.updateDemande(d.id,{statut:'commande'}); });
+      setItems([]); setGenerated(false);
+      await loadAll(); await onRefresh();
+    } catch(e) { console.error(e); }
+    setBusy(false);
+  };
+
+  const updateCmdStatut = async (id, statut) => { await db.updateCommande(id, {statut}); await loadAll(); };
+
   const exportPDF = () => {
     const sub = 'Assemblée : '+(asm.nom||'-')+'    N° : '+(asm.numero||'-')+'    Ville : '+(asm.ville||'-');
-    const headers = ['Code','Publication','Sym','Qté demandée','En stock'];
-    const rows = items.map(i => [i.code, i.nom.length>40?i.nom.slice(0,40)+'…':i.nom, i.sym||'', i.quantite, i.stock]);
+    const headers = ['Code','Publication','Sym','Qté','Remarque'];
+    const rows = items.map(i => [i.code, i.nom.length>38?i.nom.slice(0,38)+'…':i.nom, i.sym||'', i.quantite, i.is_special?'Spécial: '+(i.proclamateur||''):(i.is_inter?'Inter-assemblée':(i.custom?'Hors base':''))]);
     genPDF('DEMANDE DE PUBLICATIONS', sub, headers, rows, 'Commande_'+toDay()+'.pdf');
   };
 
-  const pendingDemandes = demandes.filter(d => d.statut==='en_attente').length;
+  const exportCmdPDF = async (cmd) => {
+    let its = cmdItems[cmd.id];
+    if (!its) { its = await db.getCommandeItems(cmd.id); setCmdItems(prev=>({...prev,[cmd.id]:its})); }
+    const sub = 'Assemblée : '+(asm.nom||'-')+'    N° : '+(asm.numero||'-')+'    Date : '+fmtD(cmd.date);
+    const headers = ['Code','Publication','Sym','Qté','Remarque'];
+    const rows = its.map(i => [i.code, (i.nom||'').length>38?(i.nom||'').slice(0,38)+'…':(i.nom||''), i.sym||'', i.quantite, i.is_special?'Spécial: '+(i.proclamateur||''):'']);
+    genPDF('DEMANDE DE PUBLICATIONS', sub, headers, rows, 'Commande_'+(cmd.date||'')+'.pdf');
+  };
+
+  const sendInter = async () => {
+    if (!interF.to_id || !interF.code || !interF.nom || busy) return;
+    setBusy(true);
+    try {
+      await db.createInter({from_assemblee_id:asmId, to_assemblee_id:interF.to_id, code:interF.code, nom:interF.nom, sym:interF.sym||'', quantite:parseInt(interF.quantite)||1, notes:interF.notes||''});
+      setInterF({to_id:'',code:'',nom:'',sym:'',quantite:1,notes:''}); setShowInterForm(false);
+      await loadAll();
+    } catch(e) {}
+    setBusy(false);
+  };
+
+  const updateInterStatut = async (id, statut) => { await db.updateInter(id, {statut}); await loadAll(); };
+
+  const stColors = {en_attente:{bg:'#FFF4EE',c:C.warn,l:'En attente'}, commandee:{bg:'#F0F4FF',c:C.navy,l:'Commandée'}, recue:{bg:'#EEF8F2',c:C.ok,l:'Reçue'}, annulee:{bg:'#F5F3EE',c:C.muted,l:'Annulée'}};
+  const interColors = {en_attente:{bg:'#FFF4EE',c:C.warn,l:'En attente'}, acceptee:{bg:'#F0F4FF',c:C.navy,l:'Acceptée'}, refusee:{bg:'#FFF0EE',c:C.danger,l:'Refusée'}, recue:{bg:'#EEF8F2',c:C.ok,l:'Reçue'}};
+  const mainTBtn = (id,l) => h('button',{onClick:()=>setTab(id),style:{flex:1,padding:'8px',borderRadius:7,border:'none',cursor:'pointer',fontSize:11,fontWeight:tab===id?600:400,background:tab===id?'#fff':'transparent',color:tab===id?C.navy:C.muted,boxShadow:tab===id?'0 1px 3px rgba(0,0,0,.08)':'none'}},l);
 
   return h('div',{style:{padding:'14px 14px 20px'}},
-    h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}},
-      h('div',{style:{fontSize:18,fontWeight:700,color:C.navy}},'Commandes'),
-      generated && items.length>0 && h('button',{onClick:exportPDF,style:{padding:'6px 12px',borderRadius:8,background:C.navy,color:'#fff',border:'none',cursor:'pointer',fontSize:11,fontWeight:600}},'📄 Exporter PDF')),
+    h('div',{style:{fontSize:18,fontWeight:700,color:C.navy,marginBottom:10}},'Commandes'),
+    h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:8,padding:3,marginBottom:14,gap:1}},mainTBtn('generer','Nouvelle'),mainTBtn('historique','Historique'),mainTBtn('inter','Inter-assemblée')),
 
-    !generated ? h('div',{style:{textAlign:'center',padding:'30px 16px'}},
+    // ═══ TAB: GENERER ═══
+    tab==='generer' && (!generated ? h('div',{style:{textAlign:'center',padding:'24px 16px'}},
       h('div',{style:{fontSize:36,marginBottom:12}},'🛒'),
       h('div',{style:{fontSize:14,fontWeight:600,color:C.navy,marginBottom:8}},'Générer une commande'),
-      h('div',{style:{fontSize:12,color:C.muted,marginBottom:6,lineHeight:1.5}},'Le système va analyser votre stock, vos sorties mensuelles et vos demandes spéciales pour proposer une liste de commande.'),
-      pendingDemandes>0 && h('div',{style:{fontSize:11,color:C.gold,marginBottom:12,fontWeight:500}},pendingDemandes+' demande(s) spéciale(s) en attente seront incluses.'),
+      h('div',{style:{fontSize:12,color:C.muted,marginBottom:16,lineHeight:1.5}},'Analyse du stock, des sorties et des demandes spéciales.'),
       h('button',{onClick:generate,style:{padding:'13px 32px',borderRadius:11,background:C.navy,color:'#fff',fontSize:14,fontWeight:600,cursor:'pointer',border:'none'}},'Générer la commande'))
-
     : h('div',null,
-      h('div',{style:{fontSize:12,color:C.muted,marginBottom:12}},items.length+' article(s) à commander'),
-      items.length===0 && h('div',{style:{textAlign:'center',padding:'20px',color:C.muted,fontSize:12}},'Stock complet ! Aucune commande nécessaire.'),
-      ...items.map((it,idx) => {
-        const art = arts.find(a=>a.id===it.article_id);
-        return h('div',{key:it.article_id,style:{background:'#fff',borderRadius:10,padding:'10px 12px',marginBottom:6,border:'1px solid '+C.border,display:'flex',alignItems:'center',gap:8}},
-          h('div',{style:{flex:1,minWidth:0}},
-            h('div',{style:{fontSize:12,fontWeight:500,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},it.nom),
-            h('div',{style:{fontSize:10,color:C.muted}},it.code+(it.special?' · ⭐ Demande spéciale':'')+' · Stock: '+it.stock)),
-          h('div',{style:{display:'flex',alignItems:'center',gap:4}},
-            h('button',{onClick:()=>setItems(items.map((x,i)=>i===idx?{...x,quantite:Math.max(1,x.quantite-1)}:x)),style:{width:28,height:28,borderRadius:6,background:'#F5F3EE',border:'1px solid '+C.border,fontSize:14,cursor:'pointer'}},'−'),
-            h('span',{style:{fontSize:14,fontWeight:700,color:C.navy,width:30,textAlign:'center'}},it.quantite),
-            h('button',{onClick:()=>setItems(items.map((x,i)=>i===idx?{...x,quantite:x.quantite+1}:x)),style:{width:28,height:28,borderRadius:6,background:C.navy,border:'none',color:'#fff',fontSize:14,cursor:'pointer'}},'+'),
-            h('button',{onClick:()=>setItems(items.filter((_,i)=>i!==idx)),style:{marginLeft:4,background:'none',border:'none',cursor:'pointer',color:C.muted,fontSize:14}},'✕')));
-      }),
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
+        h('div',{style:{fontSize:12,color:C.muted}},items.length+' article(s)'),
+        items.length>0 && h('div',{style:{display:'flex',gap:4}},
+          h('button',{onClick:exportPDF,style:{padding:'5px 10px',borderRadius:6,background:C.navy,color:'#fff',border:'none',cursor:'pointer',fontSize:10,fontWeight:600}},'📄 PDF'),
+          h('button',{onClick:saveCommande,disabled:busy,style:{padding:'5px 10px',borderRadius:6,background:C.ok,color:'#fff',border:'none',cursor:'pointer',fontSize:10,fontWeight:600}},busy?'...':'💾 Sauvegarder'))),
+      ...items.map((it,idx) => h('div',{key:idx,style:{background:'#fff',borderRadius:10,padding:'10px 12px',marginBottom:5,border:'1px solid '+(it.is_special?C.gold+'44':it.custom?C.warn+'44':C.border),display:'flex',alignItems:'center',gap:8}},
+        h('div',{style:{flex:1,minWidth:0}},
+          h('div',{style:{fontSize:12,fontWeight:500,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},it.nom),
+          h('div',{style:{fontSize:10,color:C.muted}},it.code+(it.is_special?' · ⭐ '+it.proclamateur:'')+(it.custom?' · 🆕 Hors base':'')+(it.is_inter?' · 🔄 Inter':''))),
+        h('div',{style:{display:'flex',alignItems:'center',gap:3}},
+          h('button',{onClick:()=>setItems(items.map((x,i)=>i===idx?{...x,quantite:Math.max(1,x.quantite-1)}:x)),style:{width:26,height:26,borderRadius:5,background:'#F5F3EE',border:'1px solid '+C.border,fontSize:13,cursor:'pointer'}},'−'),
+          h('span',{style:{fontSize:13,fontWeight:700,color:C.navy,width:28,textAlign:'center'}},it.quantite),
+          h('button',{onClick:()=>setItems(items.map((x,i)=>i===idx?{...x,quantite:x.quantite+1}:x)),style:{width:26,height:26,borderRadius:5,background:C.navy,border:'none',color:'#fff',fontSize:13,cursor:'pointer'}},'+'),
+          h('button',{onClick:()=>setItems(items.filter((_,i)=>i!==idx)),style:{marginLeft:3,background:'none',border:'none',cursor:'pointer',color:C.muted,fontSize:13}},'✕')))),
 
-      h('div',{style:{display:'flex',gap:8,marginTop:12}},
-        h('button',{onClick:()=>setShowAdd(!showAdd),style:{flex:1,padding:'10px',borderRadius:9,background:'#fff',border:'1px solid '+C.border,color:C.navy,fontSize:12,fontWeight:600,cursor:'pointer'}},showAdd?'Annuler':'+ Ajouter un article'),
-        h('button',{onClick:()=>{setGenerated(false);setItems([]);},style:{padding:'10px 16px',borderRadius:9,background:'#FFF0EE',border:'none',color:C.danger,fontSize:12,fontWeight:600,cursor:'pointer'}},'Réinitialiser')),
+      h('div',{style:{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}},
+        h('button',{onClick:()=>{setShowAdd(!showAdd);setShowNew(false);},style:{padding:'8px 12px',borderRadius:8,background:'#fff',border:'1px solid '+C.border,color:C.navy,fontSize:11,fontWeight:600,cursor:'pointer'}},showAdd?'Annuler':'+ Article existant'),
+        h('button',{onClick:()=>{setShowNew(!showNew);setShowAdd(false);},style:{padding:'8px 12px',borderRadius:8,background:'#fff',border:'1px solid '+C.border,color:C.warn,fontSize:11,fontWeight:600,cursor:'pointer'}},showNew?'Annuler':'+ Article hors base'),
+        h('button',{onClick:()=>{setGenerated(false);setItems([]);},style:{padding:'8px 12px',borderRadius:8,background:'#FFF0EE',border:'none',color:C.danger,fontSize:11,fontWeight:600,cursor:'pointer'}},'Réinitialiser')),
 
       showAdd && h('div',{style:{background:'#fff',borderRadius:10,padding:'12px',marginTop:8,border:'1px solid '+C.border}},
-        h('div',{style:{marginBottom:8}},
-          h('label',{style:{fontSize:10,color:C.muted,fontWeight:600,display:'block',marginBottom:3}},'ARTICLE'),
-          h('select',{value:addId,onChange:e=>setAddId(e.target.value),style:{width:'100%',padding:'8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',background:'#fff'}},
+        h('select',{value:addId,onChange:e=>setAddId(e.target.value),style:{width:'100%',padding:'8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',background:'#fff',marginBottom:6}},
+          h('option',{value:''},'— Sélectionner —'),
+          ...CATS.map(cat => h('optgroup',{key:cat,label:cat},...arts.filter(a=>a.cat===cat).map(a=>h('option',{key:a.id,value:a.id},a.code+' — '+a.nom))))),
+        h('div',{style:{display:'flex',gap:8}},
+          h('input',{type:'number',value:addQty,onChange:e=>setAddQty(Math.max(1,parseInt(e.target.value)||1)),min:1,style:{width:70,padding:'8px',borderRadius:6,border:'1px solid '+C.border,fontSize:12,outline:'none',textAlign:'center'}}),
+          h('button',{onClick:addManual,disabled:!addId,style:{flex:1,padding:'8px',borderRadius:6,background:addId?C.gold:'#E8E5DF',color:addId?'#fff':C.muted,fontSize:11,fontWeight:600,cursor:addId?'pointer':'not-allowed',border:'none'}},'Ajouter'))),
+
+      showNew && h('div',{style:{background:'#fff',borderRadius:10,padding:'12px',marginTop:8,border:'1px solid '+C.warn+'44'}},
+        h('div',{style:{fontSize:11,fontWeight:600,color:C.warn,marginBottom:8}},'Article hors base'),
+        h('div',{style:{display:'flex',gap:6,marginBottom:6}},
+          h('input',{value:nw.code,onChange:e=>setNw({...nw,code:e.target.value}),placeholder:'Code',style:{width:70,padding:'7px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none'}}),
+          h('input',{value:nw.nom,onChange:e=>setNw({...nw,nom:e.target.value}),placeholder:'Nom de la publication',style:{flex:1,padding:'7px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none'}})),
+        h('div',{style:{display:'flex',gap:6,marginBottom:6}},
+          h('input',{value:nw.sym,onChange:e=>setNw({...nw,sym:e.target.value}),placeholder:'Symbole',style:{width:70,padding:'7px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none'}}),
+          h('select',{value:nw.cat,onChange:e=>setNw({...nw,cat:e.target.value}),style:{flex:1,padding:'7px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',background:'#fff'}},...CATS.map(c=>h('option',{key:c},c))),
+          h('input',{type:'number',value:nw.quantite,onChange:e=>setNw({...nw,quantite:Math.max(1,parseInt(e.target.value)||1)}),min:1,style:{width:50,padding:'7px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',textAlign:'center'}})),
+        h('button',{onClick:addCustom,disabled:!nw.code||!nw.nom,style:{width:'100%',padding:'8px',borderRadius:6,background:nw.code&&nw.nom?C.warn:'#E8E5DF',color:nw.code&&nw.nom?'#fff':C.muted,fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},'Ajouter à la commande')))),
+
+    // ═══ TAB: HISTORIQUE ═══
+    tab==='historique' && h('div',null,
+      cmds.length===0 && h('div',{style:{textAlign:'center',padding:'30px',color:C.muted,fontSize:12}},'Aucune commande sauvegardée.'),
+      ...cmds.map(cmd => {
+        const st = stColors[cmd.statut] || stColors.en_attente;
+        const isExp = expandedCmd===cmd.id;
+        return h('div',{key:cmd.id,style:{background:'#fff',borderRadius:10,marginBottom:8,border:'1px solid '+C.border,overflow:'hidden'}},
+          h('div',{onClick:()=>loadCmdItems(cmd.id),style:{padding:'11px 14px',cursor:'pointer',display:'flex',alignItems:'center',gap:8}},
+            h('div',{style:{flex:1}},
+              h('div',{style:{fontSize:13,fontWeight:600,color:C.text}},cmd.notes||'Commande du '+fmtD(cmd.date)),
+              h('div',{style:{fontSize:10,color:C.muted}},fmtD(cmd.date))),
+            h('span',{style:{fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:10,background:st.bg,color:st.c}},st.l),
+            h('span',{style:{color:C.muted,fontSize:12}},isExp?'▲':'▼')),
+          isExp && cmdItems[cmd.id] && h('div',{style:{padding:'0 14px 12px',borderTop:'1px solid '+C.border}},
+            h('div',{style:{display:'flex',gap:4,marginTop:8,marginBottom:8,flexWrap:'wrap'}},
+              cmd.statut==='en_attente' && h('button',{onClick:()=>updateCmdStatut(cmd.id,'commandee'),style:{padding:'4px 10px',borderRadius:6,background:C.navy+'11',color:C.navy,fontSize:10,fontWeight:500,cursor:'pointer',border:'1px solid '+C.navy+'22'}},'→ Commandée'),
+              cmd.statut==='commandee' && h('button',{onClick:()=>updateCmdStatut(cmd.id,'recue'),style:{padding:'4px 10px',borderRadius:6,background:C.ok+'11',color:C.ok,fontSize:10,fontWeight:500,cursor:'pointer',border:'1px solid '+C.ok+'22'}},'→ Reçue'),
+              (cmd.statut==='en_attente'||cmd.statut==='commandee') && h('button',{onClick:()=>updateCmdStatut(cmd.id,'annulee'),style:{padding:'4px 10px',borderRadius:6,background:C.danger+'11',color:C.danger,fontSize:10,fontWeight:500,cursor:'pointer',border:'1px solid '+C.danger+'22'}},'Annuler'),
+              h('button',{onClick:()=>exportCmdPDF(cmd),style:{padding:'4px 10px',borderRadius:6,background:C.navy,color:'#fff',fontSize:10,fontWeight:500,cursor:'pointer',border:'none'}},'📄 PDF')),
+            ...cmdItems[cmd.id].map(it => h('div',{key:it.id,style:{padding:'6px 0',borderBottom:'1px solid #F5F3EE',display:'flex',alignItems:'center',gap:8}},
+              h('div',{style:{flex:1}},
+                h('div',{style:{fontSize:11,fontWeight:500,color:C.text}},it.nom),
+                h('div',{style:{fontSize:10,color:C.muted}},it.code+(it.is_special?' · ⭐ '+(it.proclamateur||''):''))),
+              h('span',{style:{fontSize:12,fontWeight:700,color:C.navy}},it.quantite)))));
+      })),
+
+    // ═══ TAB: INTER-ASSEMBLÉE ═══
+    tab==='inter' && h('div',null,
+      h('div',{style:{display:'flex',gap:6,marginBottom:12}},
+        h('button',{onClick:()=>setInterTab('recu'),style:{flex:1,padding:'7px',borderRadius:7,border:'none',cursor:'pointer',fontSize:11,fontWeight:interTab==='recu'?600:400,background:interTab==='recu'?C.navy:'#E8E5DF',color:interTab==='recu'?'#fff':C.muted}},'📥 Reçues ('+interRecu.length+')'),
+        h('button',{onClick:()=>setInterTab('envoye'),style:{flex:1,padding:'7px',borderRadius:7,border:'none',cursor:'pointer',fontSize:11,fontWeight:interTab==='envoye'?600:400,background:interTab==='envoye'?C.navy:'#E8E5DF',color:interTab==='envoye'?'#fff':C.muted}},'📤 Envoyées ('+interEnvoye.length+')')),
+      h('button',{onClick:()=>setShowInterForm(!showInterForm),style:{width:'100%',padding:'9px',borderRadius:8,background:showInterForm?'#E8E5DF':C.gold,color:showInterForm?C.text:'#fff',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',marginBottom:12}},showInterForm?'Annuler':'Demander à une autre assemblée'),
+      showInterForm && h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
+        h('div',{style:{marginBottom:11}},
+          h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'ASSEMBLÉE DESTINATAIRE'),
+          h('select',{value:interF.to_id,onChange:e=>setInterF({...interF,to_id:e.target.value}),style:{width:'100%',padding:'9px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
             h('option',{value:''},'— Sélectionner —'),
-            ...CATS.map(cat => h('optgroup',{key:cat,label:cat},...arts.filter(a=>a.cat===cat).map(a=>h('option',{key:a.id,value:a.id},a.code+' — '+a.nom+' (stock:'+a.stock+')')))))),
-        h('div',{style:{display:'flex',gap:8,alignItems:'flex-end'}},
-          h('div',{style:{flex:1}},
-            h('label',{style:{fontSize:10,color:C.muted,fontWeight:600,display:'block',marginBottom:3}},'QUANTITÉ'),
-            h('input',{type:'number',value:addQty,onChange:e=>setAddQty(Math.max(1,parseInt(e.target.value)||1)),min:1,style:{width:'100%',padding:'8px',borderRadius:6,border:'1px solid '+C.border,fontSize:12,outline:'none',textAlign:'center'}})),
-          h('button',{onClick:addManual,disabled:!addId,style:{padding:'8px 16px',borderRadius:6,background:addId?C.gold:'#E8E5DF',color:addId?'#fff':C.muted,fontSize:11,fontWeight:600,cursor:addId?'pointer':'not-allowed',border:'none'}},'Ajouter'))))
+            ...allAsm.map(a=>h('option',{key:a.id,value:a.id},a.nom+(a.numero?' ('+a.numero+')':''))))),
+        h('div',{style:{display:'flex',gap:6,marginBottom:8}},
+          h('div',{style:{flex:0.4}},h(Inp,{label:'CODE',value:interF.code,onChange:v=>setInterF({...interF,code:v})})),
+          h('div',{style:{flex:1}},h(Inp,{label:'PUBLICATION',value:interF.nom,onChange:v=>setInterF({...interF,nom:v})}))),
+        h('div',{style:{display:'flex',gap:6,marginBottom:8}},
+          h('div',{style:{flex:1}},h(Inp,{label:'SYMBOLE',value:interF.sym,onChange:v=>setInterF({...interF,sym:v})})),
+          h('div',{style:{flex:1}},h(Inp,{label:'QUANTITÉ',value:interF.quantite,onChange:v=>setInterF({...interF,quantite:v}),type:'number'}))),
+        h(Inp,{label:'NOTE (optionnel)',value:interF.notes,onChange:v=>setInterF({...interF,notes:v}),placeholder:'Ex: Urgent pour assemblée spéciale'}),
+        h('button',{onClick:sendInter,disabled:!interF.to_id||!interF.code||!interF.nom||busy,style:{width:'100%',padding:'10px',borderRadius:8,background:(interF.to_id&&interF.code&&interF.nom)?C.gold:'#E8E5DF',color:(interF.to_id&&interF.code&&interF.nom)?'#fff':C.muted,fontSize:12,fontWeight:600,cursor:'pointer',border:'none'}},busy?'Envoi...':'Envoyer la demande')),
+
+      interTab==='recu' && h('div',null,
+        interRecu.length===0 && h('div',{style:{textAlign:'center',padding:'20px',color:C.muted,fontSize:12}},'Aucune demande reçue.'),
+        ...interRecu.map(r => {
+          const fromAsm = allAsm.find(a=>a.id===r.from_assemblee_id);
+          const st = interColors[r.statut] || interColors.en_attente;
+          return h('div',{key:r.id,style:{background:'#fff',borderRadius:10,padding:'11px 14px',marginBottom:6,border:'1px solid '+C.border}},
+            h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}},
+              h('div',{style:{fontSize:12,fontWeight:600,color:C.text}},'De : '+(fromAsm?fromAsm.nom:'?')),
+              h('span',{style:{fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:10,background:st.bg,color:st.c}},st.l)),
+            h('div',{style:{fontSize:11,color:C.muted}},r.code+' — '+r.nom+' × '+r.quantite),
+            r.notes && h('div',{style:{fontSize:10,color:C.muted,fontStyle:'italic',marginTop:2}},r.notes),
+            h('div',{style:{display:'flex',gap:4,marginTop:6}},
+              r.statut==='en_attente' && h('button',{onClick:()=>updateInterStatut(r.id,'acceptee'),style:{padding:'4px 10px',borderRadius:6,background:C.ok+'11',color:C.ok,fontSize:10,fontWeight:500,cursor:'pointer',border:'1px solid '+C.ok+'22'}},'Accepter'),
+              r.statut==='en_attente' && h('button',{onClick:()=>updateInterStatut(r.id,'refusee'),style:{padding:'4px 10px',borderRadius:6,background:C.danger+'11',color:C.danger,fontSize:10,fontWeight:500,cursor:'pointer',border:'1px solid '+C.danger+'22'}},'Refuser'),
+              r.statut==='acceptee' && h('div',{style:{fontSize:10,color:C.muted,fontStyle:'italic'}},'Sera inclus dans la prochaine commande générée.')));
+        })),
+
+      interTab==='envoye' && h('div',null,
+        interEnvoye.length===0 && h('div',{style:{textAlign:'center',padding:'20px',color:C.muted,fontSize:12}},'Aucune demande envoyée.'),
+        ...interEnvoye.map(r => {
+          const toAsm = allAsm.find(a=>a.id===r.to_assemblee_id);
+          const st = interColors[r.statut] || interColors.en_attente;
+          return h('div',{key:r.id,style:{background:'#fff',borderRadius:10,padding:'11px 14px',marginBottom:6,border:'1px solid '+C.border}},
+            h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}},
+              h('div',{style:{fontSize:12,fontWeight:600,color:C.text}},'À : '+(toAsm?toAsm.nom:'?')),
+              h('span',{style:{fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:10,background:st.bg,color:st.c}},st.l)),
+            h('div',{style:{fontSize:11,color:C.muted}},r.code+' — '+r.nom+' × '+r.quantite),
+            h('div',{style:{fontSize:10,color:C.muted}},fmtD(r.date)));
+        })))
   );
 }
 
@@ -1138,7 +1335,7 @@ function App() {
       page==='stock' && h(StockPage,{arts,onArt:setModal}),
       page==='mouvement' && h(MouvementPage,{arts,mvts,asmId:asm.id,user,onRefresh:refresh}),
       page==='inventaire' && h(InventairePage,{arts,mvts,asm}),
-      page==='commandes' && h(CommandesPage,{arts,mvts,demandes,asmId:asm.id,asm,onRefresh:refresh}),
+      page==='commandes' && h(CommandesPage,{arts,mvts,demandes,asmId:asm.id,asm,user,onRefresh:refresh}),
       page==='demandes' && h(DemandesPage,{arts,demandes,asmId:asm.id,onRefresh:refresh}),
       page==='settings' && h(SettingsPage,{asm,user,membres,arts,asmId:asm.id,onRefresh:refresh,onLogout:handleLogout})),
     h(Nav,{page,setPage,alertCount:alerts.length}),

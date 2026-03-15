@@ -625,7 +625,6 @@ function Dashboard({arts,mvts,asm,user,setPage}) {
   const on = navigator.onLine;
 
   return h('div',{style:{padding:'16px 14px 20px'}},
-    user.role==='superadmin'&&h('div',{onClick:()=>setPage('_back_sa'),style:{display:'flex',alignItems:'center',gap:4,marginBottom:8,cursor:'pointer'}},h('span',{style:{fontSize:12,color:C.danger,fontWeight:600}},'← Retour Super Admin')),
     h('div',{style:{marginBottom:18}},
       h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between'}},
         h('div',{style:{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase'}},'◆ INVENTORY'),
@@ -1103,7 +1102,7 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
   };
 
   const addCustom = () => {
-    if (!nw.code || !nw.nom) return;
+    if (!nw.nom) return;
     setItems([...items, {article_id:null, code:nw.code, nom:nw.nom, sym:nw.sym, cat:nw.cat, quantite:parseInt(nw.quantite)||1, stock:0, custom:true}]);
     setNw({code:'',nom:'',sym:'',cat:'Bibles',quantite:1}); setShowNew(false);
   };
@@ -1204,7 +1203,7 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
           h('input',{value:nw.sym,onChange:e=>setNw({...nw,sym:e.target.value}),placeholder:'Symbole',style:{width:70,padding:'7px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none'}}),
           h('select',{value:nw.cat,onChange:e=>setNw({...nw,cat:e.target.value}),style:{flex:1,padding:'7px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',background:'#fff'}},...CATS.map(c=>h('option',{key:c},c))),
           h('input',{type:'number',value:nw.quantite,onChange:e=>setNw({...nw,quantite:Math.max(1,parseInt(e.target.value)||1)}),min:1,style:{width:50,padding:'7px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',textAlign:'center'}})),
-        h('button',{onClick:addCustom,disabled:!nw.code||!nw.nom,style:{width:'100%',padding:'8px',borderRadius:6,background:nw.code&&nw.nom?C.warn:'#E8E5DF',color:nw.code&&nw.nom?'#fff':C.muted,fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},'Ajouter à la commande')))),
+        h('button',{onClick:addCustom,disabled:!nw.nom,style:{width:'100%',padding:'8px',borderRadius:6,background:nw.nom?C.warn:'#E8E5DF',color:nw.nom?'#fff':C.muted,fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},'Ajouter à la commande')))),
 
     // ═══ TAB: HISTORIQUE ═══
     tab==='historique' && h('div',null,
@@ -1330,23 +1329,34 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
 // ═══════════════════════════════════════
 function DemandesPage({arts, demandes, asmId, onRefresh}) {
   const [show, setShow] = useState(false);
+  const [mode, setMode] = useState('existing');
   const [f, setF] = useState({proclamateur_prenom:'', proclamateur_nom:'', article_id:'', langue:'Français', quantite:1});
+  const [custom, setCustom] = useState({proclamateur_prenom:'', proclamateur_nom:'', nom:'', code:'', langue:'Français', quantite:1});
   const [busy, setBusy] = useState(false);
 
-  const submit = async () => {
+  const submitExisting = async () => {
     if (!f.proclamateur_prenom || !f.proclamateur_nom || !f.article_id || busy) return;
     setBusy(true);
     try {
       await db.createDemande({assemblee_id:asmId, article_id:f.article_id, proclamateur:f.proclamateur_prenom+' '+f.proclamateur_nom, langue:f.langue, quantite:parseInt(f.quantite)||1});
       setF({proclamateur_prenom:'', proclamateur_nom:'', article_id:'', langue:'Français', quantite:1});
-      setShow(false);
-      await onRefresh();
+      setShow(false); await onRefresh();
+    } catch(e) {}
+    setBusy(false);
+  };
+
+  const submitCustom = async () => {
+    if (!custom.proclamateur_prenom || !custom.proclamateur_nom || !custom.nom || busy) return;
+    setBusy(true);
+    try {
+      await db.createDemande({assemblee_id:asmId, article_id:null, proclamateur:custom.proclamateur_prenom+' '+custom.proclamateur_nom, langue:custom.langue, quantite:parseInt(custom.quantite)||1, custom_nom:custom.nom, custom_code:custom.code||null});
+      setCustom({proclamateur_prenom:'', proclamateur_nom:'', nom:'', code:'', langue:'Français', quantite:1});
+      setShow(false); await onRefresh();
     } catch(e) {}
     setBusy(false);
   };
 
   const updateStatut = async (id, statut) => { await db.updateDemande(id, {statut}); await onRefresh(); };
-
   const statutStyle = {en_attente:{bg:'#FFF4EE',c:C.warn,label:'En attente'}, commande:{bg:'#F0F4FF',c:C.navy,label:'Commandé'}, recu:{bg:'#EEF8F2',c:C.ok,label:'Reçu'}};
 
   return h('div',{style:{padding:'14px 14px 20px'}},
@@ -1355,38 +1365,63 @@ function DemandesPage({arts, demandes, asmId, onRefresh}) {
       h('button',{onClick:()=>setShow(!show),style:{padding:'5px 11px',borderRadius:7,background:show?'#E8E5DF':C.navy,color:show?C.text:'#fff',fontSize:11,fontWeight:500,cursor:'pointer',border:'none'}},show?'Annuler':'+ Nouvelle')),
 
     show && h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:14}},
-      h('div',{style:{display:'flex',gap:8}},
-        h('div',{style:{flex:1}},h(Inp,{label:'PRÉNOM DU PROCLAMATEUR',value:f.proclamateur_prenom,onChange:v=>setF({...f,proclamateur_prenom:v}),placeholder:'Prénom'})),
-        h('div',{style:{flex:1}},h(Inp,{label:'NOM',value:f.proclamateur_nom,onChange:v=>setF({...f,proclamateur_nom:v}),placeholder:'Nom'}))),
-      h('div',{style:{marginBottom:11}},
-        h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'PUBLICATION'),
-        h(SearchSelect,{value:f.article_id,onChange:v=>setF({...f,article_id:v}),placeholder:'Rechercher une publication...',
-          options:arts.map(a=>({value:a.id,label:a.code+' — '+a.nom,sub:a.cat}))})),
-      h('div',{style:{display:'flex',gap:8}},
-        h('div',{style:{flex:1}},
-          h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'QUANTITÉ'),
-          h('input',{type:'number',value:f.quantite,onChange:e=>setF({...f,quantite:Math.max(1,parseInt(e.target.value)||1)}),min:1,style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',textAlign:'center'}})),
-        h('div',{style:{flex:1}},
-          h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'LANGUE'),
-          h('select',{value:f.langue,onChange:e=>setF({...f,langue:e.target.value}),style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
-            ...LANGUES.map(l=>h('option',{key:l,value:l},l))))),
-      h('button',{onClick:submit,disabled:!f.proclamateur_prenom||!f.proclamateur_nom||!f.article_id||busy,
-        style:{width:'100%',padding:'10px',borderRadius:9,marginTop:4,background:(f.proclamateur_prenom&&f.proclamateur_nom&&f.article_id)?C.gold:'#E8E5DF',color:(f.proclamateur_prenom&&f.proclamateur_nom&&f.article_id)?'#fff':C.muted,fontSize:12,fontWeight:600,cursor:'pointer',border:'none'}},
-        busy?'Enregistrement...':'Enregistrer la demande')),
+      h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:7,padding:2,marginBottom:12}},
+        h('button',{onClick:()=>setMode('existing'),style:{flex:1,padding:'7px',borderRadius:5,border:'none',cursor:'pointer',fontSize:11,fontWeight:500,background:mode==='existing'?'#fff':'transparent',color:mode==='existing'?C.navy:C.muted}},'Article existant'),
+        h('button',{onClick:()=>setMode('custom'),style:{flex:1,padding:'7px',borderRadius:5,border:'none',cursor:'pointer',fontSize:11,fontWeight:500,background:mode==='custom'?'#fff':'transparent',color:mode==='custom'?C.navy:C.muted}},'Article hors base')),
+
+      mode==='existing' && h('div',null,
+        h('div',{style:{display:'flex',gap:8}},
+          h('div',{style:{flex:1}},h(Inp,{label:'PRÉNOM PROCLAMATEUR',value:f.proclamateur_prenom,onChange:v=>setF({...f,proclamateur_prenom:v})})),
+          h('div',{style:{flex:1}},h(Inp,{label:'NOM',value:f.proclamateur_nom,onChange:v=>setF({...f,proclamateur_nom:v})}))),
+        h('div',{style:{marginBottom:11}},
+          h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'PUBLICATION'),
+          h(SearchSelect,{value:f.article_id,onChange:v=>setF({...f,article_id:v}),placeholder:'Rechercher une publication...',
+            options:arts.map(a=>({value:a.id,label:a.code+' — '+a.nom,sub:a.cat}))})),
+        h('div',{style:{display:'flex',gap:8}},
+          h('div',{style:{flex:1}},
+            h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'QUANTITÉ'),
+            h('input',{type:'number',value:f.quantite,onChange:e=>setF({...f,quantite:Math.max(1,parseInt(e.target.value)||1)}),min:1,style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',textAlign:'center'}})),
+          h('div',{style:{flex:1}},
+            h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'LANGUE'),
+            h('select',{value:f.langue,onChange:e=>setF({...f,langue:e.target.value}),style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
+              ...LANGUES.map(l=>h('option',{key:l,value:l},l))))),
+        h('button',{onClick:submitExisting,disabled:!f.proclamateur_prenom||!f.proclamateur_nom||!f.article_id||busy,
+          style:{width:'100%',padding:'10px',borderRadius:9,marginTop:4,background:(f.proclamateur_prenom&&f.proclamateur_nom&&f.article_id)?C.gold:'#E8E5DF',color:(f.proclamateur_prenom&&f.proclamateur_nom&&f.article_id)?'#fff':C.muted,fontSize:12,fontWeight:600,cursor:'pointer',border:'none'}},
+          busy?'...':'Enregistrer')),
+
+      mode==='custom' && h('div',null,
+        h('div',{style:{display:'flex',gap:8}},
+          h('div',{style:{flex:1}},h(Inp,{label:'PRÉNOM PROCLAMATEUR',value:custom.proclamateur_prenom,onChange:v=>setCustom({...custom,proclamateur_prenom:v})})),
+          h('div',{style:{flex:1}},h(Inp,{label:'NOM',value:custom.proclamateur_nom,onChange:v=>setCustom({...custom,proclamateur_nom:v})}))),
+        h(Inp,{label:'NOM DE LA PUBLICATION *',value:custom.nom,onChange:v=>setCustom({...custom,nom:v}),placeholder:'Ex: Livre de paraboles'}),
+        h(Inp,{label:'CODE (optionnel)',value:custom.code,onChange:v=>setCustom({...custom,code:v}),placeholder:'Ex: 5500'}),
+        h('div',{style:{display:'flex',gap:8}},
+          h('div',{style:{flex:1}},
+            h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'QUANTITÉ'),
+            h('input',{type:'number',value:custom.quantite,onChange:e=>setCustom({...custom,quantite:Math.max(1,parseInt(e.target.value)||1)}),min:1,style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',textAlign:'center'}})),
+          h('div',{style:{flex:1}},
+            h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'LANGUE'),
+            h('select',{value:custom.langue,onChange:e=>setCustom({...custom,langue:e.target.value}),style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
+              ...LANGUES.map(l=>h('option',{key:l,value:l},l))))),
+        h('button',{onClick:submitCustom,disabled:!custom.proclamateur_prenom||!custom.proclamateur_nom||!custom.nom||busy,
+          style:{width:'100%',padding:'10px',borderRadius:9,marginTop:4,background:(custom.proclamateur_prenom&&custom.proclamateur_nom&&custom.nom)?C.gold:'#E8E5DF',color:(custom.proclamateur_prenom&&custom.proclamateur_nom&&custom.nom)?'#fff':C.muted,fontSize:12,fontWeight:600,cursor:'pointer',border:'none'}},
+          busy?'...':'Enregistrer'))
+    ),
 
     demandes.length===0 && !show && h('div',{style:{textAlign:'center',padding:'30px',color:C.muted}},
       h('div',{style:{fontSize:36,marginBottom:8}},'⭐'),
       h('div',{style:{fontSize:13}},'Aucune demande spéciale enregistrée.')),
 
     ...demandes.map(d => {
-      const art = arts.find(a=>a.id===d.article_id);
+      const art = d.article_id ? arts.find(a=>a.id===d.article_id) : null;
+      const artNom = art ? art.code+' — '+art.nom : (d.custom_nom || '?') + (d.custom_code ? ' ('+d.custom_code+')' : '');
       const st = statutStyle[d.statut] || statutStyle.en_attente;
-      return h('div',{key:d.id,style:{background:'#fff',borderRadius:10,padding:'11px 14px',marginBottom:6,border:'1px solid '+C.border}},
+      return h('div',{key:d.id,style:{background:'#fff',borderRadius:10,padding:'11px 14px',marginBottom:6,border:'1px solid '+(d.article_id?C.border:C.warn+'44')}},
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}},
           h('div',{style:{fontSize:13,fontWeight:600,color:C.text}},d.proclamateur),
           h('span',{style:{fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:10,background:st.bg,color:st.c}},st.label)),
-        h('div',{style:{fontSize:11,color:C.muted}},
-          (art?art.code+' — '+art.nom:'?')+' × '+d.quantite+(d.langue&&d.langue!=='Français'?' · '+d.langue:'')),
+        h('div',{style:{fontSize:11,color:C.muted}},artNom+' × '+d.quantite+(d.langue&&d.langue!=='Français'?' · '+d.langue:'')),
+        !d.article_id && h('div',{style:{fontSize:9,color:C.warn,marginTop:2}},'📝 Article hors base'),
         h('div',{style:{fontSize:10,color:C.muted,marginTop:2}},fmtD(d.date||d.created_at)),
         h('div',{style:{display:'flex',gap:4,marginTop:6}},
           d.statut==='en_attente' && h('button',{onClick:()=>updateStatut(d.id,'commande'),style:{padding:'4px 10px',borderRadius:6,background:C.navy+'11',color:C.navy,fontSize:10,fontWeight:500,cursor:'pointer',border:'1px solid '+C.navy+'22'}},'→ Commandé'),
@@ -1394,6 +1429,8 @@ function DemandesPage({arts, demandes, asmId, onRefresh}) {
     })
   );
 }
+
+
 
 // ═══════════════════════════════════════
 // MODAL ARTICLE
@@ -1570,14 +1607,15 @@ function App() {
 
   return h('div',{className:'app-shell',style:{display:'flex',flexDirection:'column'}},
     h('div',{style:{flex:1,overflowY:'auto'}},
-      page==='dashboard' && h(Dashboard,{arts,mvts,asm,user,setPage:p=>{if(p==='_back_sa'){setSaMode(true);return;}setPage(p);}}),
+      user&&user.role==='superadmin'&&h('div',{onClick:()=>{setSaMode(true);setPage('dashboard');},style:{background:C.danger+'0A',padding:'8px 14px',display:'flex',alignItems:'center',gap:6,cursor:'pointer',borderBottom:'1px solid '+C.danger+'22'}},h('span',{style:{fontSize:13}},'←'),h('span',{style:{fontSize:12,color:C.danger,fontWeight:600}},'Retour au panneau Super Admin'),asm&&h('span',{style:{fontSize:10,color:C.muted,marginLeft:'auto'}},asm.nom)),
+      page==='dashboard' && h(Dashboard,{arts,mvts,asm,user,setPage}),
       page==='stock' && h(StockPage,{arts,onArt:setModal}),
       page==='mouvement' && h(MouvementPage,{arts,mvts,asmId:asm.id,user,onRefresh:refresh}),
       page==='inventaire' && h(InventairePage,{arts,mvts,asm}),
       page==='commandes' && h(CommandesPage,{arts,mvts,demandes,asmId:asm.id,asm,user,onRefresh:refresh}),
       page==='demandes' && h(DemandesPage,{arts,demandes,asmId:asm.id,onRefresh:refresh}),
       page==='settings' && h(SettingsPage,{asm,user,membres,arts,asmId:asm.id,onRefresh:refresh,onLogout:handleLogout})),
-    h(Nav,{page,setPage:p=>{if(p==='_back_sa'){setSaMode(true);return;}setPage(p);},alertCount:alerts.length}),
+    h(Nav,{page,setPage,alertCount:alerts.length}),
     modal && h(ModalArticle,{art:modal,user,mvts,onClose:()=>setModal(null),onRefresh:refresh})
   );
 }

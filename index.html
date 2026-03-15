@@ -71,7 +71,7 @@ const DEFAULT_ARTICLES = [
   {code:'5144',nom:"TMN — Édition d'étude",sym:'nwtsty1-E',cat:'Bibles',stock:0,min_stock:1},
   {code:'5416',nom:'Rends pleinement témoignage',sym:'bt',cat:'Livres',stock:0,min_stock:3},
   {code:'5331',nom:'Approchez-vous de Jéhovah',sym:'cl',cat:'Livres',stock:0,min_stock:3},
-  {code:'5419',nom:'Imitez leur foi',sym:'',cat:'Livres',stock:0,min_stock:2},
+  {code:'5419',nom:'Imitez leur foi',sym:'ia',cat:'Livres',stock:0,min_stock:2},
   {code:'5425',nom:'Jésus : le chemin, la vérité, la vie',sym:'jy',cat:'Livres',stock:0,min_stock:3},
   {code:'5422',nom:'Le Royaume de Dieu en action !',sym:'kr',cat:'Livres',stock:0,min_stock:2},
   {code:'5445',nom:'Vivez pour toujours ! (livre)',sym:'lff',cat:'Livres',stock:0,min_stock:5},
@@ -103,7 +103,7 @@ const DEFAULT_ARTICLES = [
   {code:'7305',nom:"Invitation aux réunions de l'assemblée",sym:'inv',cat:'Tracts',stock:0,min_stock:20},
   {code:'7130',nom:"Qu'est-ce que la Bible ? (T-30)",sym:'T-30',cat:'Tracts',stock:0,min_stock:20},
   {code:'7131',nom:"Comment voyez-vous l'avenir ? (T-31)",sym:'T-31',cat:'Tracts',stock:0,min_stock:20},
-  {code:'7132',nom:'Clé du bonheur famill ? (T-32)',sym:'T-32',cat:'Tracts',stock:0,min_stock:20},
+  {code:'7132',nom:'Clé du bonheur familial ? (T-32)',sym:'T-32',cat:'Tracts',stock:0,min_stock:20},
   {code:'7133',nom:'Qui domine le monde ? (T-33)',sym:'T-33',cat:'Tracts',stock:0,min_stock:20},
   {code:'7134',nom:'Souffrances cesseront-elles ? (T-34)',sym:'T-34',cat:'Tracts',stock:0,min_stock:20},
   {code:'7135',nom:'Les morts revivront-ils ? (T-35)',sym:'T-35',cat:'Tracts',stock:0,min_stock:20},
@@ -269,11 +269,16 @@ const db = {
 
   // Demandes
   async getDemandes(assemblee_id) {
-    const {data} = await sb.from('demandes').select('*').eq('assemblee_id', assemblee_id).order('created_at',{ascending:false});
-    return data || [];
+    try {
+      const {data} = await sb.from('demandes').select('*').eq('assemblee_id', assemblee_id).order('created_at',{ascending:false});
+      return data || [];
+    } catch(e) { console.error('getDemandes error:', e); return []; }
   },
   async createDemande(d) {
-    const {data,error} = await sb.from('demandes').insert(d).select().single();
+    const clean = {assemblee_id:d.assemblee_id, article_id:d.article_id||null, proclamateur:d.proclamateur, langue:d.langue, quantite:d.quantite};
+    if (d.custom_nom) clean.custom_nom = d.custom_nom;
+    if (d.custom_code) clean.custom_code = d.custom_code;
+    const {data,error} = await sb.from('demandes').insert(clean).select().single();
     if (error) throw error;
     return data;
   },
@@ -835,7 +840,7 @@ function AnalyticsPanel({arts, mvts, demandes}) {
 
     // AI Suggestions
     (analysis.orderMore.length > 0 || analysis.orderLess.length > 0) && h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
-      h('div',{style:{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}},'🤖 Suggestions intéligentes'),
+      h('div',{style:{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}},'🤖 Suggestions IA'),
       analysis.orderMore.length > 0 && h('div',{style:{marginBottom:10}},
         h('div',{style:{fontSize:11,fontWeight:600,color:C.ok,marginBottom:6}},'📈 Commander davantage :'),
         ...analysis.orderMore.map(x => h('div',{key:x.art.id,style:{padding:'6px 8px',background:C.ok+'08',borderRadius:6,marginBottom:3,display:'flex',alignItems:'center',justifyContent:'space-between'}},
@@ -1587,6 +1592,8 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
 // DEMANDES SPÉCIALES
 // ═══════════════════════════════════════
 function DemandesPage({arts, demandes, asmId, onRefresh}) {
+  if (!Array.isArray(arts)) return null;
+  if (!Array.isArray(demandes)) demandes = [];
   const [show, setShow] = useState(false);
   const [mode, setMode] = useState('existing');
   const [f, setF] = useState({proclamateur_prenom:'', proclamateur_nom:'', article_id:'', langue:'Français', quantite:1});
@@ -1809,15 +1816,17 @@ function App() {
   const [saMode,setSaMode] = useState(false);
 
   const loadData = useCallback(async (asmId) => {
-    const [a, m, ar, mv, dm] = await Promise.all([
-      sb.from('assemblees').select('*').eq('id',asmId).single(),
-      db.getMembres(asmId),
-      db.getArticles(asmId),
-      db.getMouvements(asmId, 200),
-      db.getDemandes(asmId)
-    ]);
-    if (a.data) setAsm(a.data);
-    setMembres(m); setArts(ar); setMvts(mv); setDemandes(dm);
+    try {
+      const [a, m, ar, mv, dm] = await Promise.all([
+        sb.from('assemblees').select('*').eq('id',asmId).single(),
+        db.getMembres(asmId),
+        db.getArticles(asmId),
+        db.getMouvements(asmId, 200),
+        db.getDemandes(asmId)
+      ]);
+      if (a.data) setAsm(a.data);
+      setMembres(m||[]); setArts(ar||[]); setMvts(mv||[]); setDemandes(dm||[]);
+    } catch(e) { console.error('loadData error:', e); }
   }, []);
 
   const refresh = useCallback(async () => {

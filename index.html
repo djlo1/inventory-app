@@ -48,8 +48,10 @@ const ROLES = [
   {id:'adjoint', label:'Adjoint aux publications', p:['stock','mouvement','inventaire','mod_stock','ajout_art','membres','acces']},
   {id:'assistant', label:'Assistant du préposé', p:['stock','mouvement','inventaire']}
 ];
-const hasPerm = (role, perm) => (ROLES.find(r => r.id === role) || {p:[]}).p.includes(perm);
+const rolePerms = (role) => (ROLES.find(r => r.id === role) || {p:[]}).p;
+const hasPerm = (role, perm, customPerms) => customPerms ? customPerms.includes(perm) : rolePerms(role).includes(perm);
 const roleLabel = (r) => (ROLES.find(x => x.id === r) || {}).label || r;
+const PERMS = [{id:'stock',label:'Voir le stock'},{id:'mouvement',label:'Enregistrer mouvements'},{id:'inventaire',label:'Voir inventaire'},{id:'mod_stock',label:'Modifier le stock'},{id:'ajout_art',label:'Ajouter des articles'},{id:'membres',label:'Gérer les membres'},{id:'acces',label:'Gérer les accès'}];
 
 const DEFAULT_ARTICLES = [
   {code:'5140',nom:'Les Saintes Écritures — TMN',sym:'nwt',cat:'Bibles',stock:0,min_stock:3},
@@ -653,9 +655,9 @@ function SettingsPage({asm,user,membres,arts,asmId,onRefresh,onLogout}) {
     h('div',{style:{fontSize:18,fontWeight:700,color:C.navy,marginBottom:14}},'Paramètres'),
     h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:8,padding:3,marginBottom:14,gap:1}},
       tBtn('profil','Profil'),tBtn('assemblee','Assemblée'),
-      hasPerm(user.role,'membres') && tBtn('membres','Membres'),
-      hasPerm(user.role,'ajout_art') && tBtn('articles','Articles'),
-      hasPerm(user.role,'acces') && tBtn('acces','Accès')),
+      hasPerm(user.role,'membres',user.perms) && tBtn('membres','Membres'),
+      hasPerm(user.role,'ajout_art',user.perms) && tBtn('articles','Articles'),
+      hasPerm(user.role,'acces',user.perms) && tBtn('acces','Accès')),
     saved && h('div',{style:{background:'#EEF8F2',borderRadius:7,padding:'7px 10px',marginBottom:10,display:'flex',alignItems:'center',gap:5}},h('span',{style:{color:C.ok}},'✓'),h('span',{style:{fontSize:11,color:C.ok,fontWeight:500}},saved)),
 
     // PROFIL
@@ -721,31 +723,69 @@ function SettingsPage({asm,user,membres,arts,asmId,onRefresh,onLogout}) {
     tab==='acces' && h('div',null,
       h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
         h('div',{style:{fontSize:13,fontWeight:600,color:C.text,marginBottom:4}},'Gestion des accès'),
-        h('div',{style:{fontSize:11,color:C.muted,marginBottom:14,lineHeight:1.5}},'Modifiez les rôles, codes PIN et activez/désactivez les comptes.'),
-        ...membres.map(m => h('div',{key:m.id,style:{background:m.actif!==false?'#fff':'#F8F6F2',borderRadius:10,padding:'12px',marginBottom:8,border:'1px solid '+(m.actif!==false?C.border:C.danger+'33')}},
-          h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:8}},
-            h('div',{style:{width:36,height:36,borderRadius:18,background:m.actif!==false?C.navy:'#ccc',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:14,fontWeight:700}},(m.prenom||'?')[0].toUpperCase()),
-            h('div',{style:{flex:1}},
-              h('div',{style:{fontSize:13,fontWeight:600,color:m.actif!==false?C.text:C.muted}},m.prenom+' '+m.nom+(m.id===user.id?' (vous)':'')),
-              h('div',{style:{fontSize:10,color:C.muted}},roleLabel(m.role))),
-            m.id!==user.id && h('button',{onClick:()=>updateMembreField(m.id,'actif',m.actif===false),style:{padding:'5px 10px',borderRadius:7,background:m.actif!==false?'#FFF0EE':'#EEF8F2',color:m.actif!==false?C.danger:C.ok,fontSize:10,fontWeight:600,cursor:'pointer',border:'none'}},m.actif!==false?'Désactiver':'Activer')),
-          h('div',{style:{display:'flex',gap:6}},
-            h('div',{style:{flex:1}},
-              h('label',{style:{fontSize:9,color:C.muted,fontWeight:600,display:'block',marginBottom:3}},'RÔLE'),
-              h('select',{value:m.role,onChange:e=>updateMembreField(m.id,'role',e.target.value),style:{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',background:'#fff'}},
-                ...ROLES.map(r=>h('option',{key:r.id,value:r.id},r.label)))),
-            h('div',{style:{flex:1}},
-              h('label',{style:{fontSize:9,color:C.muted,fontWeight:600,display:'block',marginBottom:3}},'CODE PIN'),
-              h('input',{type:'text',value:m.pin||'',onChange:e=>{const v=e.target.value.replace(/\D/g,'').slice(0,4);updateMembreField(m.id,'pin',v);},maxLength:4,style:{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',background:'#fff',fontWeight:600,letterSpacing:4}}))),
-          m.actif===false && h('div',{style:{fontSize:10,color:C.danger,marginTop:6,fontStyle:'italic'}},'Ce compte est désactivé.')))))
+        h('div',{style:{fontSize:11,color:C.muted,marginBottom:14,lineHeight:1.5}},"Gérez les comptes, les rôles et les permissions de chaque membre."),
+        ...membres.map(m => {
+          const isMe = m.id===user.id;
+          const isAct = m.actif!==false;
+          const mp = m.perms || rolePerms(m.role);
+          const togglePerm = async (pid) => {
+            const current = m.perms || [...rolePerms(m.role)];
+            const next = current.includes(pid) ? current.filter(x=>x!==pid) : [...current, pid];
+            await db.updateMembre(m.id, {perms: next});
+            await onRefresh();
+          };
+          return h('div',{key:m.id,style:{background:isAct?'#fff':'#F8F6F2',borderRadius:12,padding:'14px',marginBottom:10,border:'1px solid '+(isAct?C.border:C.danger+'33')}},
+            h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:10}},
+              h('div',{style:{width:38,height:38,borderRadius:19,background:isAct?C.navy:'#ccc',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:15,fontWeight:700}},(m.prenom||'?')[0].toUpperCase()),
+              h('div',{style:{flex:1}},
+                h('div',{style:{fontSize:13,fontWeight:600,color:isAct?C.text:C.muted}},m.prenom+' '+m.nom+(isMe?' (vous)':'')),
+                h('div',{style:{fontSize:10,color:C.muted}},roleLabel(m.role)+(m.username?' · @'+m.username:''))),
+              !isMe && h('div',{style:{display:'flex',gap:4}},
+                h('button',{onClick:async()=>{await db.updateMembre(m.id,{actif:!isAct});await onRefresh();},
+                  style:{padding:'5px 8px',borderRadius:6,background:isAct?'#FFF0EE':'#EEF8F2',color:isAct?C.danger:C.ok,fontSize:9,fontWeight:600,cursor:'pointer',border:'none'}},isAct?'Désactiver':'Activer'),
+                h('button',{onClick:async()=>{if(confirm('Supprimer définitivement '+m.prenom+' '+m.nom+' ?')){await db.deleteMembre(m.id);await onRefresh();}},
+                  style:{padding:'5px 8px',borderRadius:6,background:'#FFF0EE',color:C.danger,fontSize:9,fontWeight:600,cursor:'pointer',border:'none'}},'Supprimer'))),
+            h('div',{style:{display:'flex',gap:6,marginBottom:10}},
+              h('div',{style:{flex:1}},
+                h('label',{style:{fontSize:9,color:C.muted,fontWeight:600,display:'block',marginBottom:3}},'RÔLE'),
+                h('select',{value:m.role,onChange:async e=>{await db.updateMembre(m.id,{role:e.target.value,perms:null});await onRefresh();},
+                  style:{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',background:'#fff'}},
+                  ...ROLES.map(r=>h('option',{key:r.id,value:r.id},r.label)))),
+              h('div',{style:{flex:1}},
+                h('label',{style:{fontSize:9,color:C.muted,fontWeight:600,display:'block',marginBottom:3}},'CODE PIN'),
+                h('input',{type:'text',value:m.pin||'',onChange:async e=>{const v=e.target.value.replace(/\D/g,'').slice(0,4);await db.updateMembre(m.id,{pin:v});await onRefresh();},maxLength:4,
+                  style:{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',background:'#fff',fontWeight:600,letterSpacing:4}}))),
+            h('div',{style:{marginBottom:4}},
+              h('div',{style:{fontSize:10,fontWeight:600,color:C.text,marginBottom:6}},'Permissions :'),
+              h('div',{style:{display:'flex',flexWrap:'wrap',gap:4}},
+                ...PERMS.map(p => {
+                  const on = mp.includes(p.id);
+                  return h('div',{key:p.id,onClick:isMe?null:()=>togglePerm(p.id),
+                    style:{padding:'4px 8px',borderRadius:6,fontSize:9,fontWeight:500,cursor:isMe?'default':'pointer',
+                      background:on?C.navy+'15':'#F5F3EE',color:on?C.navy:C.muted,border:'1px solid '+(on?C.navy+'33':C.border),
+                      opacity:isMe?0.6:1}},
+                    (on?'✓ ':'○ ')+p.label);
+                }))),
+            !isAct && h('div',{style:{fontSize:10,color:C.danger,marginTop:6,fontStyle:'italic'}},'Ce compte est désactivé — impossible de se connecter.'));
+        })),
+      h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border}},
+        h('div',{style:{fontSize:13,fontWeight:600,color:C.text,marginBottom:8}},'Rôles par défaut'),
+        h('div',{style:{fontSize:10,color:C.muted,marginBottom:10,lineHeight:1.4}},"Quand un membre n'a pas de permissions personnalisées, les permissions de son rôle s'appliquent. Changer le rôle réinitialise les permissions."),
+        ...ROLES.map(r => h('div',{key:r.id,style:{padding:'8px 10px',borderRadius:8,marginBottom:5,background:'#FAFAF8',border:'1px solid '+C.border}},
+          h('div',{style:{fontSize:11,fontWeight:600,color:C.navy,marginBottom:4}},r.label),
+          h('div',{style:{display:'flex',flexWrap:'wrap',gap:3}},
+            ...r.p.map(pid => h('span',{key:pid,style:{fontSize:8,padding:'2px 6px',borderRadius:8,background:'#FFF8E8',color:C.gold,fontWeight:500}},
+              (PERMS.find(x=>x.id===pid)||{}).label||pid)))))))
   );
 }
+
+
 
 // ═══════════════════════════════════════
 // MODAL ARTICLE
 // ═══════════════════════════════════════
 function ModalArticle({art,user,mvts,onClose,onRefresh}) {
-  const canMod = hasPerm(user.role,'mod_stock');
+  const canMod = hasPerm(user.role,'mod_stock',user.perms);
   const [tab,setTab] = useState(canMod?'stock':'history');
   const [es,setEs] = useState(art.stock);
   const [em,setEm] = useState(art.min_stock);

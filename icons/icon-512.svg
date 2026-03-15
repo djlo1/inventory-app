@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#1B2D4F"/>
+  <g transform="translate(256,200)">
+    <polygon points="0,-80 69.3,40 -69.3,40" fill="#C8941A" stroke="#C8941A" stroke-width="8" stroke-linejoin="round"/>
+    <rect x="-8" y="-30" width="16" height="45" rx="3" fill="#1B2D4F"/>
+    <circle cx="0" cy="28" r="8" fill="#1B2D4F"/>
+  </g>
+  <text x="256" y="370" text-anchor="middle" font-family="system-ui,sans-serif" font-weight="800" font-size="72" fill="#FFFFFF" letter-spacing="6">INVENTORY</text>
+  <text x="256" y="420" text-anchor="middle" font-family="system-ui,sans-serif" font-weight="500" font-size="32" fill="#C8941A">Gestion des publications</text>
+</svg>

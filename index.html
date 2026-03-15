@@ -276,99 +276,138 @@ function Toast({msg,onDone}) {
 }
 
 // ═══════════════════════════════════════
-// ONBOARDING
+// AUTH SCREEN (Connexion + Inscription)
 // ═══════════════════════════════════════
-function Onboarding({onDone}) {
-  const [step,setStep] = useState(1);
-  const [asm,setAsm] = useState({nom:'',ville:'',numero:'',pays:'Bénin',langue:'Français'});
-  const [usr,setUsr] = useState({prenom:'',nom:'',tel:'',role:'prepose',pin:''});
+function AuthScreen({onLogin}) {
+  const [mode,setMode] = useState('connexion');
+  return h('div',{style:{maxWidth:430,margin:'0 auto',background:C.bg,minHeight:'100vh'}},
+    mode === 'connexion' ? h(ConnexionForm,{onLogin, goInscription:()=>setMode('inscription')})
+    : h(InscriptionForm,{onLogin, goConnexion:()=>setMode('connexion')})
+  );
+}
+
+function ConnexionForm({onLogin, goInscription}) {
+  const [username,setUsername] = useState('');
+  const [pin,setPin] = useState('');
   const [busy,setBusy] = useState(false);
   const [err,setErr] = useState('');
+
+  const go = async () => {
+    if (!username || pin.length < 4 || busy) return;
+    setBusy(true); setErr('');
+    try {
+      const {data:found} = await sb.from('membres').select('*').ilike('username', username.trim()).eq('pin', pin).eq('actif', true);
+      if (found && found.length > 0) {
+        const membre = found[0];
+        db.setSession(membre.assemblee_id, membre.id);
+        onLogin(membre);
+      } else {
+        setErr("Nom d'utilisateur ou code PIN incorrect.");
+      }
+    } catch(e) {
+      setErr('Erreur de connexion : ' + (e.message || '?'));
+    }
+    setBusy(false);
+  };
+
+  return h('div',{style:{padding:'40px 20px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'100vh'}},
+    h('div',{style:{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase',marginBottom:4}},'◆ INVENTORY'),
+    h('div',{style:{fontSize:22,fontWeight:800,color:C.navy,marginBottom:6}},'Connexion'),
+    h('div',{style:{fontSize:12,color:C.muted,marginBottom:24,textAlign:'center'}},"Entrez votre nom d'utilisateur et votre code PIN"),
+    err && h('div',{style:{background:'#FFF0EE',border:'1px solid '+C.danger+'33',borderRadius:9,padding:'8px 14px',marginBottom:12,fontSize:12,color:C.danger,width:'100%',maxWidth:340,textAlign:'center'}},err),
+    h('div',{style:{width:'100%',maxWidth:340}},
+      h(Inp,{label:"NOM D'UTILISATEUR",value:username,onChange:v=>setUsername(v),placeholder:'Ex: djlo.alo'}),
+      h(Inp,{label:'CODE PIN',value:pin,onChange:v=>setPin(v.replace(/\D/g,'').slice(0,4)),placeholder:'••••',type:'password'}),
+      h('button',{onClick:go,disabled:!username||pin.length<4||busy,
+        style:{width:'100%',padding:'13px',borderRadius:11,background:(username&&pin.length>=4)?C.navy:'#E8E5DF',color:(username&&pin.length>=4)?'#fff':C.muted,fontSize:14,fontWeight:600,cursor:(username&&pin.length>=4)?'pointer':'not-allowed',border:'none',marginTop:4}},
+        busy ? 'Connexion...' : 'Se connecter'),
+      h('div',{style:{textAlign:'center',marginTop:20}},
+        h('div',{style:{fontSize:12,color:C.muted,marginBottom:6}},"Pas encore de compte ?"),
+        h('div',{onClick:goInscription,style:{fontSize:13,color:C.gold,fontWeight:600,cursor:'pointer'}},'Créer un compte →')))
+  );
+}
+
+
+
+function InscriptionForm({onLogin, goConnexion}) {
+  const [step,setStep] = useState(1);
+  const [asm,setAsm] = useState({nom:'',ville:'',numero:'',pays:'Bénin',langue:'Français',departement:''});
+  const [usr,setUsr] = useState({prenom:'',nom:'',username:'',tel:'',role:'responsable',pin:''});
+  const [busy,setBusy] = useState(false);
+  const [err,setErr] = useState('');
+
+  const numValid = /^[A-Z]{2}\d{4}$/.test(asm.numero.toUpperCase());
+  const step1Ok = asm.nom && asm.numero && numValid;
+  const step2Ok = usr.prenom && usr.nom && usr.username && usr.pin.length >= 4;
 
   const finish = async () => {
     if (busy) return;
     setBusy(true); setErr('');
     try {
-      const newAsm = await db.createAssemblee(asm);
-      const newMembre = await db.createMembre({...usr, assemblee_id: newAsm.id});
+      const {data:existing} = await sb.from('membres').select('id').ilike('username', usr.username.trim());
+      if (existing && existing.length > 0) { setErr("Ce nom d'utilisateur est déjà pris."); setBusy(false); return; }
+      const asmData = {...asm, numero: asm.numero.toUpperCase()};
+      const newAsm = await db.createAssemblee(asmData);
+      const newMembre = await db.createMembre({...usr, username: usr.username.trim().toLowerCase(), assemblee_id: newAsm.id});
       await db.insertDefaultArticles(newAsm.id);
       db.setSession(newAsm.id, newMembre.id);
-      onDone(newAsm, newMembre);
+      onLogin(newMembre);
     } catch(e) {
       setErr('Erreur : ' + (e.message || 'connexion impossible'));
       setBusy(false);
     }
   };
 
-  return h('div',{style:{padding:'40px 20px',display:'flex',flexDirection:'column',alignItems:'center',minHeight:'100vh',justifyContent:'center'}},
+  return h('div',{style:{padding:'40px 20px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'100vh'}},
     h('div',{style:{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase',marginBottom:4}},'◆ INVENTORY'),
-    h('div',{style:{fontSize:22,fontWeight:800,color:C.navy,marginBottom:6}}, step===1 ? 'Bienvenue !' : 'Votre profil'),
-    h('div',{style:{fontSize:12,color:C.muted,marginBottom:28,textAlign:'center'}},
-      step===1 ? "Commencez par renseigner votre assemblée" : "Créez votre compte administrateur"),
+    h('div',{style:{fontSize:22,fontWeight:800,color:C.navy,marginBottom:6}}, step===1 ? 'Nouvelle assemblée' : 'Votre profil'),
+    h('div',{style:{fontSize:12,color:C.muted,marginBottom:24,textAlign:'center'}},
+      step===1 ? "Renseignez les informations de votre assemblée" : "Créez votre compte administrateur"),
     err && h('div',{style:{background:'#FFF0EE',border:'1px solid '+C.danger+'33',borderRadius:9,padding:'8px 14px',marginBottom:12,fontSize:12,color:C.danger,width:'100%',maxWidth:340,textAlign:'center'}},err),
 
     step===1 && h('div',{style:{width:'100%',maxWidth:340}},
-      h(Inp,{label:"NOM DE L'ASSEMBLÉE",value:asm.nom,onChange:v=>setAsm({...asm,nom:v}),placeholder:'Ex: Assemblée de Cotonou'}),
+      h(Inp,{label:"NOM DE L'ASSEMBLÉE *",value:asm.nom,onChange:v=>setAsm({...asm,nom:v}),placeholder:'Ex: Assemblée de Cotonou'}),
+      h('div',{style:{marginBottom:11}},
+        h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},"NUMÉRO DE L'ASSEMBLÉE * (format: XX0000)"),
+        h('input',{value:asm.numero,onChange:e=>setAsm({...asm,numero:e.target.value.toUpperCase().slice(0,6)}),placeholder:'Ex: AL2261',maxLength:6,
+          style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+(asm.numero && !numValid ? C.danger : C.border),fontSize:12,outline:'none',background:'#fff',textTransform:'uppercase',letterSpacing:2,fontWeight:600}}),
+        asm.numero && !numValid && h('div',{style:{fontSize:10,color:C.danger,marginTop:3}},'Format requis : 2 lettres + 4 chiffres (ex: AL2261)')),
       h('div',{style:{display:'flex',gap:8}},
-        h('div',{style:{flex:1}},h(Inp,{label:'NUMÉRO',value:asm.numero,onChange:v=>setAsm({...asm,numero:v}),placeholder:'23456'})),
-        h('div',{style:{flex:2}},h(Inp,{label:'VILLE',value:asm.ville,onChange:v=>setAsm({...asm,ville:v}),placeholder:'Cotonou'}))),
+        h('div',{style:{flex:1}},h(Inp,{label:'VILLE',value:asm.ville,onChange:v=>setAsm({...asm,ville:v}),placeholder:'Cotonou'})),
+        h('div',{style:{flex:1}},h(Inp,{label:'DÉPARTEMENT',value:asm.departement,onChange:v=>setAsm({...asm,departement:v}),placeholder:'Atlantique'}))),
       h(Inp,{label:'PAYS',value:asm.pays,onChange:v=>setAsm({...asm,pays:v})}),
-      h('button',{onClick:()=>{if(asm.nom)setStep(2);},disabled:!asm.nom,
-        style:{width:'100%',padding:'13px',borderRadius:11,background:asm.nom?C.navy:'#E8E5DF',color:asm.nom?'#fff':C.muted,fontSize:14,fontWeight:600,cursor:asm.nom?'pointer':'not-allowed',border:'none'}},'Continuer →')),
+      h('div',{style:{marginBottom:11}},
+        h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'LANGUE PRINCIPALE'),
+        h('select',{value:asm.langue,onChange:e=>setAsm({...asm,langue:e.target.value}),style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
+          ...LANGUES.map(l=>h('option',{key:l,value:l},l)))),
+      h('button',{onClick:()=>{if(step1Ok)setStep(2);},disabled:!step1Ok,
+        style:{width:'100%',padding:'13px',borderRadius:11,background:step1Ok?C.navy:'#E8E5DF',color:step1Ok?'#fff':C.muted,fontSize:14,fontWeight:600,cursor:step1Ok?'pointer':'not-allowed',border:'none'}},'Continuer →')),
 
     step===2 && h('div',{style:{width:'100%',maxWidth:340}},
-      h(Inp,{label:'PRÉNOM',value:usr.prenom,onChange:v=>setUsr({...usr,prenom:v}),placeholder:'Votre prénom'}),
-      h(Inp,{label:'NOM',value:usr.nom,onChange:v=>setUsr({...usr,nom:v}),placeholder:'Votre nom'}),
+      h(Inp,{label:'PRÉNOM *',value:usr.prenom,onChange:v=>setUsr({...usr,prenom:v}),placeholder:'Votre prénom'}),
+      h(Inp,{label:'NOM *',value:usr.nom,onChange:v=>setUsr({...usr,nom:v}),placeholder:'Votre nom'}),
+      h(Inp,{label:"NOM D'UTILISATEUR *",value:usr.username,onChange:v=>setUsr({...usr,username:v.replace(/\s/g,'').toLowerCase()}),placeholder:'Ex: djlo.alo'}),
+      h('div',{style:{fontSize:10,color:C.muted,marginTop:-8,marginBottom:11}},"Utilisé pour se connecter. Pas d'espaces."),
       h(Inp,{label:'TÉLÉPHONE',value:usr.tel,onChange:v=>setUsr({...usr,tel:v}),placeholder:'+229 97 00 00 00',type:'tel'}),
       h('div',{style:{marginBottom:11}},
         h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'VOTRE RÔLE'),
         h('select',{value:usr.role,onChange:e=>setUsr({...usr,role:e.target.value}),style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
-          ...ROLES.map(r=>h('option',{key:r.id,value:r.id},r.label)))),
-      h(Inp,{label:'CODE PIN (4 chiffres)',value:usr.pin,onChange:v=>setUsr({...usr,pin:v.replace(/\D/g,'').slice(0,4)}),placeholder:'1234',type:'password'}),
-      h('button',{onClick:finish,disabled:!usr.prenom||!usr.nom||usr.pin.length<4||busy,
-        style:{width:'100%',padding:'13px',borderRadius:11,background:(usr.prenom&&usr.nom&&usr.pin.length>=4)?C.navy:'#E8E5DF',color:(usr.prenom&&usr.nom&&usr.pin.length>=4)?'#fff':C.muted,fontSize:14,fontWeight:600,cursor:'pointer',border:'none'}},
-        busy ? 'Création en cours...' : 'Créer mon compte ✓'))
+          h('option',{value:'responsable'},'Responsable de la prédication'),
+          h('option',{value:'adjoint'},'Adjoint aux publications'),
+          h('option',{value:'prepose'},'Préposé aux publications'))),
+      h(Inp,{label:'CODE PIN * (4 chiffres)',value:usr.pin,onChange:v=>setUsr({...usr,pin:v.replace(/\D/g,'').slice(0,4)}),placeholder:'1234',type:'password'}),
+      h('button',{onClick:finish,disabled:!step2Ok||busy,
+        style:{width:'100%',padding:'13px',borderRadius:11,background:step2Ok?C.navy:'#E8E5DF',color:step2Ok?'#fff':C.muted,fontSize:14,fontWeight:600,cursor:step2Ok?'pointer':'not-allowed',border:'none'}},
+        busy ? 'Création en cours...' : 'Créer mon compte ✓'),
+      h('div',{onClick:()=>setStep(1),style:{textAlign:'center',fontSize:12,color:C.gold,cursor:'pointer',fontWeight:500,marginTop:12}},'← Retour')),
+
+    h('div',{style:{textAlign:'center',marginTop:24}},
+      h('div',{style:{fontSize:12,color:C.muted,marginBottom:6}},"Déjà un compte ?"),
+      h('div',{onClick:goConnexion,style:{fontSize:13,color:C.gold,fontWeight:600,cursor:'pointer'}},'Se connecter →'))
   );
 }
 
-// ═══════════════════════════════════════
-// LOGIN SCREEN
-// ═══════════════════════════════════════
-function LoginScreen({membres, asmNom, onOk}) {
-  const [sel,setSel] = useState(membres.length===1 ? membres[0] : null);
-  const [pin,setPin] = useState('');
-  const [err,setErr] = useState(false);
 
-  const go = () => {
-    if (!sel) return;
-    if (pin === sel.pin) { db.setSession(sel.assemblee_id, sel.id); onOk(sel); }
-    else { setErr(true); setPin(''); setTimeout(()=>setErr(false),2000); }
-  };
-
-  return h('div',{style:{padding:'40px 20px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'100vh'}},
-    h('div',{style:{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase',marginBottom:4}},'◆ INVENTORY'),
-    h('div',{style:{fontSize:13,color:C.muted,marginBottom:20}},asmNom),
-
-    !sel ? h('div',{style:{width:'100%',maxWidth:340}},
-      h('div',{style:{fontSize:16,fontWeight:700,color:C.navy,marginBottom:4,textAlign:'center'}},'Connexion'),
-      h('div',{style:{fontSize:12,color:C.muted,marginBottom:16,textAlign:'center'}},'Choisissez votre compte'),
-      ...membres.map(u => h('div',{key:u.id,onClick:()=>setSel(u),style:{background:'#fff',borderRadius:10,padding:'12px 14px',marginBottom:8,cursor:'pointer',border:'1px solid '+C.border,display:'flex',alignItems:'center',gap:10}},
-        h('div',{style:{width:40,height:40,borderRadius:20,background:C.navy,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:16,fontWeight:700}},(u.prenom||'?')[0].toUpperCase()),
-        h('div',{style:{flex:1}},
-          h('div',{style:{fontSize:13,fontWeight:600,color:C.text}},u.prenom+' '+u.nom),
-          h('div',{style:{fontSize:10,color:C.muted}},roleLabel(u.role))),
-        h('span',{style:{color:C.muted,fontSize:14}},'→')))
-    ) : h('div',{style:{textAlign:'center',width:'100%',maxWidth:340}},
-      h('div',{style:{width:56,height:56,borderRadius:28,background:C.navy,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:22,fontWeight:700,margin:'0 auto 12px'}},(sel.prenom||'?')[0].toUpperCase()),
-      h('div',{style:{fontSize:16,fontWeight:700,color:C.navy,marginBottom:4}},sel.prenom+' '+sel.nom),
-      h('div',{style:{fontSize:11,color:C.muted,marginBottom:24}},roleLabel(sel.role)),
-      err && h('div',{style:{background:'#FFF0EE',border:'1px solid '+C.danger+'33',borderRadius:9,padding:'8px 14px',marginBottom:12,fontSize:12,color:C.danger,fontWeight:500}},'Code PIN incorrect'),
-      h('input',{type:'password',value:pin,onChange:e=>setPin(e.target.value.replace(/\D/g,'').slice(0,4)),onKeyDown:e=>{if(e.key==='Enter')go();},placeholder:'PIN',maxLength:4,
-        style:{width:160,textAlign:'center',padding:'12px',borderRadius:10,border:'1px solid '+(err?C.danger:C.border),fontSize:22,fontWeight:700,letterSpacing:12,outline:'none',marginBottom:14}}),
-      h('button',{onClick:go,disabled:pin.length<4,style:{width:'100%',padding:'11px',borderRadius:10,background:pin.length>=4?C.navy:'#E8E5DF',color:pin.length>=4?'#fff':C.muted,fontSize:13,fontWeight:600,cursor:pin.length>=4?'pointer':'not-allowed',border:'none'}},'Déverrouiller'),
-      membres.length>1 && h('div',{onClick:()=>{setSel(null);setPin('');setErr(false);},style:{fontSize:12,color:C.gold,cursor:'pointer',fontWeight:500,marginTop:12}},'← Changer de compte'))
-  );
-}
 
 // ═══════════════════════════════════════
 // DASHBOARD
@@ -595,7 +634,7 @@ function SettingsPage({asm,user,membres,arts,asmId,onRefresh,onLogout}) {
   const [busy,setBusy] = useState(false);
   const [saved,setSaved] = useState('');
   const [showAM,setShowAM] = useState(false);
-  const [nm,setNm] = useState({prenom:'',nom:'',tel:'',role:'assistant',pin:'1234'});
+  const [nm,setNm] = useState({prenom:'',nom:'',username:'',tel:'',role:'assistant',pin:'1234'});
   const [showNewArt,setShowNewArt] = useState(false);
   const [nw,setNw] = useState({code:'',nom:'',sym:'',cat:'Bibles',stock:'0',min_stock:'5'});
 
@@ -603,7 +642,7 @@ function SettingsPage({asm,user,membres,arts,asmId,onRefresh,onLogout}) {
 
   const saveAsm = async () => { await db.updateAssemblee(asmId,{nom:f.nom,numero:f.numero,ville:f.ville,departement:f.departement,pays:f.pays,langue:f.langue}); await onRefresh(); save('Assemblée sauvegardée'); };
   const saveProfil = async () => { await db.updateMembre(user.id,{prenom:pu.prenom,nom:pu.nom,tel:pu.tel,pin:pu.pin,role:pu.role}); await onRefresh(); save('Profil sauvegardé'); };
-  const addMembre = async () => { if(!nm.prenom||!nm.nom)return; await db.createMembre({...nm,assemblee_id:asmId}); setNm({prenom:'',nom:'',tel:'',role:'assistant',pin:'1234'}); setShowAM(false); await onRefresh(); save('Membre ajouté'); };
+  const addMembre = async () => { if(!nm.prenom||!nm.nom)return; await db.createMembre({...nm,assemblee_id:asmId}); setNm({prenom:'',nom:'',username:'',tel:'',role:'assistant',pin:'1234'}); setShowAM(false); await onRefresh(); save('Membre ajouté'); };
   const delMembre = async (id) => { await db.deleteMembre(id); await onRefresh(); };
   const updateMembreField = async (id,field,val) => { await db.updateMembre(id,{[field]:val}); await onRefresh(); };
   const addArticle = async () => { if(!nw.code||!nw.nom)return; await db.createArticle({...nw,stock:parseInt(nw.stock)||0,min_stock:parseInt(nw.min_stock)||5,assemblee_id:asmId}); setNw({code:'',nom:'',sym:'',cat:'Bibles',stock:'0',min_stock:'5'}); setShowNewArt(false); await onRefresh(); save('Article ajouté'); };
@@ -649,6 +688,7 @@ function SettingsPage({asm,user,membres,arts,asmId,onRefresh,onLogout}) {
       showAM && h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
         h(Inp,{label:'PRÉNOM',value:nm.prenom,onChange:v=>setNm({...nm,prenom:v})}),
         h(Inp,{label:'NOM',value:nm.nom,onChange:v=>setNm({...nm,nom:v})}),
+        h(Inp,{label:"NOM D'UTILISATEUR",value:nm.username,onChange:v=>setNm({...nm,username:v.replace(/\s/g,'').toLowerCase()}),placeholder:'ex: jean.paul'}),
         h(Inp,{label:'TÉLÉPHONE',value:nm.tel,onChange:v=>setNm({...nm,tel:v}),type:'tel'}),
         h(Inp,{label:'CODE PIN',value:nm.pin,onChange:v=>setNm({...nm,pin:v.replace(/\D/g,'').slice(0,4)}),type:'password'}),
         h('div',{style:{marginBottom:11}},h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'RÔLE'),
@@ -658,7 +698,7 @@ function SettingsPage({asm,user,membres,arts,asmId,onRefresh,onLogout}) {
         h('div',{style:{width:36,height:36,borderRadius:18,background:C.navy+'15',display:'flex',alignItems:'center',justifyContent:'center',color:C.navy,fontSize:14,fontWeight:700}},(m.prenom||'?')[0].toUpperCase()),
         h('div',{style:{flex:1}},
           h('div',{style:{fontSize:13,fontWeight:500,color:C.text}},m.prenom+' '+m.nom+(m.id===user.id?' (vous)':'')),
-          h('div',{style:{fontSize:10,color:C.gold,fontWeight:500}},roleLabel(m.role)),
+          h('div',{style:{fontSize:10,color:C.gold,fontWeight:500}},roleLabel(m.role)),m.username&&h('div',{style:{fontSize:10,color:C.navy,fontWeight:500}},'@'+m.username),
           m.pin && h('div',{style:{fontSize:10,color:C.muted}},'🔑 '+m.pin)),
         m.id!==user.id && h('button',{onClick:()=>delMembre(m.id),style:{background:'none',border:'none',cursor:'pointer',color:C.muted,fontSize:14}},'✕')))),
 
@@ -816,25 +856,10 @@ function App() {
             return;
           }
         }
-        // No valid session - check if assemblees exist
-        const asms = await db.getAssemblees();
-        if (asms.length > 0) {
-          const firstAsm = asms[0];
-          const mbrs = await db.getMembres(firstAsm.id);
-          const activeMbrs = mbrs.filter(m => m.actif !== false);
-          if (activeMbrs.length > 0) {
-            setAsm(firstAsm);
-            setMembres(activeMbrs);
-            setScreen('login');
-          } else {
-            setScreen('onboarding');
-          }
-        } else {
-          setScreen('onboarding');
-        }
+        setScreen('auth');
       } catch(e) {
         console.error('Init error:', e);
-        setScreen('onboarding');
+        setScreen('auth');
       }
     })();
   }, []);
@@ -845,17 +870,10 @@ function App() {
     setScreen('main');
   };
 
-  const handleOnboardDone = async (newAsm, newMembre) => {
-    setAsm(newAsm);
-    setUser(newMembre);
-    await loadData(newAsm.id);
-    setScreen('main');
-  };
-
   const handleLogout = () => {
     db.clearSession();
     setUser(null);
-    setScreen('login');
+    setScreen('auth');
   };
 
   const alerts = arts.filter(a => getSt(a) !== 'ok');
@@ -867,15 +885,8 @@ function App() {
         h('div',{style:{fontSize:12,color:C.muted}},'Connexion à la base de données...')));
   }
 
-  if (screen === 'onboarding') {
-    return h('div',{style:{maxWidth:430,margin:'0 auto',background:C.bg,minHeight:'100vh'}},
-      h(Onboarding,{onDone:handleOnboardDone}));
-  }
-
-  if (screen === 'login') {
-    const activeMembres = membres.filter(m => m.actif !== false);
-    return h('div',{style:{maxWidth:430,margin:'0 auto',background:C.bg,minHeight:'100vh'}},
-      h(LoginScreen,{membres:activeMembres, asmNom:asm?asm.nom:'', onOk:handleLogin}));
+  if (screen === 'auth') {
+    return h(AuthScreen,{onLogin:handleLogin});
   }
 
   // MAIN

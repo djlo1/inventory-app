@@ -17,10 +17,18 @@ body{font-family:'Outfit',system-ui,sans-serif;background:#F5F3EE}
 input,select,button,textarea{font-family:'Outfit',system-ui,sans-serif}
 ::-webkit-scrollbar{width:0}
 input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+.app-shell{max-width:430px;margin:0 auto;min-height:100vh;background:#F5F3EE;position:relative}
+@media(min-width:768px){
+  body{background:#E8E5DF}
+  .app-shell{max-width:800px;border-left:1px solid #D8D5CF;border-right:1px solid #D8D5CF;box-shadow:0 0 40px rgba(0,0,0,.06)}
+}
+@media(min-width:1200px){
+  .app-shell{max-width:1000px}
+}
 </style>
 </head>
 <body>
-<div id="app" style="max-width:430px;margin:0 auto;min-height:100vh;background:#F5F3EE;position:relative"></div>
+<div id="app"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -276,6 +284,33 @@ const db = {
 // ═══════════════════════════════════════
 // SMALL COMPONENTS
 // ═══════════════════════════════════════
+// ═══════════════════════════════════════
+// SEARCH SELECT (dropdown filtrable)
+// ═══════════════════════════════════════
+function SearchSelect({options, value, onChange, placeholder, renderOption}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const selected = options.find(o => o.value === value);
+  const filtered = options.filter(o => !q || (o.label||'').toLowerCase().includes(q.toLowerCase()) || (o.sub||'').toLowerCase().includes(q.toLowerCase()));
+  return h('div',{style:{position:'relative'}},
+    h('div',{onClick:()=>setOpen(!open),style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between',minHeight:38}},
+      h('span',{style:{color:selected?C.text:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}},selected?selected.label:(placeholder||'Sélectionner...')),
+      h('span',{style:{color:C.muted,fontSize:10,marginLeft:4}},open?'▲':'▼')),
+    open && h('div',{style:{position:'absolute',top:'100%',left:0,right:0,zIndex:60,background:'#fff',border:'1px solid '+C.border,borderRadius:8,marginTop:2,boxShadow:'0 8px 24px rgba(0,0,0,.12)',maxHeight:240,overflow:'hidden',display:'flex',flexDirection:'column'}},
+      h('div',{style:{padding:'6px 8px',borderBottom:'1px solid '+C.border}},
+        h('input',{value:q,onChange:e=>setQ(e.target.value),placeholder:'🔍 Rechercher...',autoFocus:true,
+          style:{width:'100%',padding:'7px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none'}})),
+      h('div',{style:{overflowY:'auto',maxHeight:190}},
+        filtered.length===0 && h('div',{style:{padding:'12px',textAlign:'center',color:C.muted,fontSize:11}},'Aucun résultat'),
+        ...filtered.map(o => h('div',{key:o.value,onClick:()=>{onChange(o.value);setOpen(false);setQ('');},
+          style:{padding:'8px 10px',cursor:'pointer',borderBottom:'1px solid #F5F3EE',background:o.value===value?C.navy+'08':'#fff'}},
+          renderOption ? renderOption(o) : h('div',null,
+            h('div',{style:{fontSize:12,fontWeight:500,color:C.text}},o.label),
+            o.sub && h('div',{style:{fontSize:10,color:C.muted}},o.sub))))),
+      h('div',{onClick:()=>{setOpen(false);setQ('');},style:{position:'fixed',inset:0,zIndex:-1}}))
+  );
+}
+
 function Badge({s}) {
   const {c,bg} = stStyle(s);
   return h('span',{style:{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:20,background:bg,color:c}},stLabel(s));
@@ -323,7 +358,7 @@ function Toast({msg,onDone}) {
 // ═══════════════════════════════════════
 function AuthScreen({onLogin}) {
   const [mode,setMode] = useState('connexion');
-  return h('div',{style:{maxWidth:430,margin:'0 auto',background:C.bg,minHeight:'100vh'}},
+  return h('div',{className:'app-shell'},
     mode === 'connexion' ? h(ConnexionForm,{onLogin, goInscription:()=>setMode('inscription')})
     : h(InscriptionForm,{onLogin, goConnexion:()=>setMode('connexion')})
   );
@@ -882,6 +917,9 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
   const [busy, setBusy] = useState(false);
   // Inter
   const [interTab, setInterTab] = useState('recu');
+  const [expandedInter, setExpandedInter] = useState(null);
+  const [refuseId, setRefuseId] = useState(null);
+  const [refuseReason, setRefuseReason] = useState('');
   const [interRecu, setInterRecu] = useState([]);
   const [interEnvoye, setInterEnvoye] = useState([]);
   const [allAsm, setAllAsm] = useState([]);
@@ -1038,9 +1076,8 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
         h('button',{onClick:()=>{setGenerated(false);setItems([]);},style:{padding:'8px 12px',borderRadius:8,background:'#FFF0EE',border:'none',color:C.danger,fontSize:11,fontWeight:600,cursor:'pointer'}},'Réinitialiser')),
 
       showAdd && h('div',{style:{background:'#fff',borderRadius:10,padding:'12px',marginTop:8,border:'1px solid '+C.border}},
-        h('select',{value:addId,onChange:e=>setAddId(e.target.value),style:{width:'100%',padding:'8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',background:'#fff',marginBottom:6}},
-          h('option',{value:''},'— Sélectionner —'),
-          ...CATS.map(cat => h('optgroup',{key:cat,label:cat},...arts.filter(a=>a.cat===cat).map(a=>h('option',{key:a.id,value:a.id},a.code+' — '+a.nom))))),
+        h(SearchSelect,{value:addId,onChange:v=>setAddId(v),placeholder:'Rechercher un article...',
+          options:arts.map(a=>({value:a.id,label:a.code+' — '+a.nom,sub:a.cat+' · Stock: '+a.stock}))}),
         h('div',{style:{display:'flex',gap:8}},
           h('input',{type:'number',value:addQty,onChange:e=>setAddQty(Math.max(1,parseInt(e.target.value)||1)),min:1,style:{width:70,padding:'8px',borderRadius:6,border:'1px solid '+C.border,fontSize:12,outline:'none',textAlign:'center'}}),
           h('button',{onClick:addManual,disabled:!addId,style:{flex:1,padding:'8px',borderRadius:6,background:addId?C.gold:'#E8E5DF',color:addId?'#fff':C.muted,fontSize:11,fontWeight:600,cursor:addId?'pointer':'not-allowed',border:'none'}},'Ajouter'))),
@@ -1091,9 +1128,8 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
       showInterForm && h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
         h('div',{style:{marginBottom:11}},
           h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'ASSEMBLÉE DESTINATAIRE'),
-          h('select',{value:interF.to_id,onChange:e=>setInterF({...interF,to_id:e.target.value}),style:{width:'100%',padding:'9px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
-            h('option',{value:''},'— Sélectionner —'),
-            ...allAsm.filter(a=>a.id!==asmId).map(a=>h('option',{key:a.id,value:a.id},a.nom+(a.numero?' ('+a.numero+')':''))))),
+          h(SearchSelect,{value:interF.to_id,onChange:v=>setInterF({...interF,to_id:v}),placeholder:'Rechercher une assemblée...',
+            options:allAsm.filter(a=>a.id!==asmId).map(a=>({value:a.id,label:a.nom,sub:a.numero+(a.ville?' · '+a.ville:'')}))})),
         h('div',{style:{display:'flex',gap:6,marginBottom:8}},
           h('div',{style:{flex:0.4}},h(Inp,{label:'CODE',value:interF.code,onChange:v=>setInterF({...interF,code:v})})),
           h('div',{style:{flex:1}},h(Inp,{label:'PUBLICATION',value:interF.nom,onChange:v=>setInterF({...interF,nom:v})}))),
@@ -1108,16 +1144,39 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
         ...interRecu.map(r => {
           const fromAsm = allAsm.find(a=>a.id===r.from_assemblee_id);
           const st = interColors[r.statut] || interColors.en_attente;
-          return h('div',{key:r.id,style:{background:'#fff',borderRadius:10,padding:'11px 14px',marginBottom:6,border:'1px solid '+C.border}},
-            h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}},
-              h('div',{style:{fontSize:12,fontWeight:600,color:C.text}},'De : '+(fromAsm?fromAsm.nom:'?')),
-              h('span',{style:{fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:10,background:st.bg,color:st.c}},st.l)),
-            h('div',{style:{fontSize:11,color:C.muted}},r.code+' — '+r.nom+' × '+r.quantite),
-            r.notes && h('div',{style:{fontSize:10,color:C.muted,fontStyle:'italic',marginTop:2}},r.notes),
-            h('div',{style:{display:'flex',gap:4,marginTop:6}},
-              r.statut==='en_attente' && h('button',{onClick:()=>updateInterStatut(r.id,'acceptee'),style:{padding:'4px 10px',borderRadius:6,background:C.ok+'11',color:C.ok,fontSize:10,fontWeight:500,cursor:'pointer',border:'1px solid '+C.ok+'22'}},'Accepter'),
-              r.statut==='en_attente' && h('button',{onClick:()=>updateInterStatut(r.id,'refusee'),style:{padding:'4px 10px',borderRadius:6,background:C.danger+'11',color:C.danger,fontSize:10,fontWeight:500,cursor:'pointer',border:'1px solid '+C.danger+'22'}},'Refuser'),
-              r.statut==='acceptee' && h('div',{style:{fontSize:10,color:C.muted,fontStyle:'italic'}},'Sera inclus dans la prochaine commande générée.')));
+          const isExp = expandedInter===r.id;
+          const showRefuseForm = refuseId===r.id;
+          return h('div',{key:r.id,style:{background:'#fff',borderRadius:10,marginBottom:6,border:'1px solid '+(r.statut==='refusee'?C.danger+'33':C.border),overflow:'hidden'}},
+            h('div',{onClick:()=>setExpandedInter(isExp?null:r.id),style:{padding:'11px 14px',cursor:'pointer'}},
+              h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}},
+                h('div',{style:{display:'flex',alignItems:'center',gap:6}},
+                  h('span',{style:{fontSize:14}},'📥'),
+                  h('div',{style:{fontSize:12,fontWeight:600,color:C.text}},fromAsm?fromAsm.nom:'Assemblée inconnue')),
+                h('div',{style:{display:'flex',alignItems:'center',gap:6}},
+                  h('span',{style:{fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:10,background:st.bg,color:st.c}},st.l),
+                  h('span',{style:{color:C.muted,fontSize:10}},isExp?'▲':'▼'))),
+              h('div',{style:{fontSize:12,fontWeight:500,color:C.navy}},r.code+' — '+r.nom),
+              h('div',{style:{fontSize:11,color:C.muted}},'Quantité : '+r.quantite+' · '+fmtD(r.date||r.created_at))),
+            isExp && h('div',{style:{padding:'0 14px 12px',borderTop:'1px solid '+C.border}},
+              h('div',{style:{padding:'10px 0'}},
+                h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'Publication : '),r.nom),
+                h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'Code : '),r.code),
+                r.sym && h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'Symbole : '),r.sym),
+                h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'Quantité : '),r.quantite),
+                h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'De : '),(fromAsm?fromAsm.nom:'?')+(fromAsm&&fromAsm.numero?' ('+fromAsm.numero+')':'')),
+                h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'Date : '),fmtD(r.date||r.created_at)),
+                r.notes && h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'Note : '),r.notes),
+                r.raison_refus && h('div',{style:{fontSize:11,color:C.danger,marginBottom:4,background:C.danger+'08',padding:'6px 8px',borderRadius:6}},h('strong',null,'Raison du refus : '),r.raison_refus)),
+              h('div',{style:{display:'flex',gap:4,flexWrap:'wrap'}},
+                r.statut==='en_attente' && h('button',{onClick:()=>updateInterStatut(r.id,'acceptee'),style:{padding:'6px 14px',borderRadius:7,background:C.ok,color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},'✓ Accepter'),
+                r.statut==='en_attente' && !showRefuseForm && h('button',{onClick:()=>setRefuseId(r.id),style:{padding:'6px 14px',borderRadius:7,background:C.danger,color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},'✕ Refuser'),
+                r.statut==='acceptee' && h('div',{style:{fontSize:11,color:C.ok,fontWeight:500,padding:'4px 0'}},'✓ Acceptée — sera inclus dans la prochaine commande.')),
+              showRefuseForm && h('div',{style:{marginTop:8,background:C.danger+'06',padding:'10px',borderRadius:8,border:'1px solid '+C.danger+'22'}},
+                h('div',{style:{fontSize:11,fontWeight:600,color:C.danger,marginBottom:6}},'Raison du refus (optionnel) :'),
+                h('input',{value:refuseReason,onChange:e=>setRefuseReason(e.target.value),placeholder:'Ex: Publication en rupture de stock...',style:{width:'100%',padding:'8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',marginBottom:6}}),
+                h('div',{style:{display:'flex',gap:6}},
+                  h('button',{onClick:async()=>{await sb.from('commandes_inter').update({statut:'refusee',raison_refus:refuseReason||null}).eq('id',r.id);setRefuseId(null);setRefuseReason('');await loadAll();},style:{flex:1,padding:'7px',borderRadius:6,background:C.danger,color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},'Confirmer le refus'),
+                  h('button',{onClick:()=>{setRefuseId(null);setRefuseReason('');},style:{padding:'7px 12px',borderRadius:6,background:'#E8E5DF',color:C.text,fontSize:11,cursor:'pointer',border:'none'}},'Annuler')))));
         })),
 
       interTab==='envoye' && h('div',null,
@@ -1125,12 +1184,30 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
         ...interEnvoye.map(r => {
           const toAsm = allAsm.find(a=>a.id===r.to_assemblee_id);
           const st = interColors[r.statut] || interColors.en_attente;
-          return h('div',{key:r.id,style:{background:'#fff',borderRadius:10,padding:'11px 14px',marginBottom:6,border:'1px solid '+C.border}},
-            h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}},
-              h('div',{style:{fontSize:12,fontWeight:600,color:C.text}},'À : '+(toAsm?toAsm.nom:'?')),
-              h('span',{style:{fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:10,background:st.bg,color:st.c}},st.l)),
-            h('div',{style:{fontSize:11,color:C.muted}},r.code+' — '+r.nom+' × '+r.quantite),
-            h('div',{style:{fontSize:10,color:C.muted}},fmtD(r.date)));
+          const isExp = expandedInter===r.id;
+          return h('div',{key:r.id,style:{background:'#fff',borderRadius:10,marginBottom:6,border:'1px solid '+(r.statut==='refusee'?C.danger+'33':C.border),overflow:'hidden'}},
+            h('div',{onClick:()=>setExpandedInter(isExp?null:r.id),style:{padding:'11px 14px',cursor:'pointer'}},
+              h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}},
+                h('div',{style:{display:'flex',alignItems:'center',gap:6}},
+                  h('span',{style:{fontSize:14}},'📤'),
+                  h('div',{style:{fontSize:12,fontWeight:600,color:C.text}},toAsm?toAsm.nom:'Assemblée inconnue')),
+                h('div',{style:{display:'flex',alignItems:'center',gap:6}},
+                  h('span',{style:{fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:10,background:st.bg,color:st.c}},st.l),
+                  h('span',{style:{color:C.muted,fontSize:10}},isExp?'▲':'▼'))),
+              h('div',{style:{fontSize:12,fontWeight:500,color:C.navy}},r.code+' — '+r.nom),
+              h('div',{style:{fontSize:11,color:C.muted}},'Quantité : '+r.quantite+' · '+fmtD(r.date||r.created_at))),
+            isExp && h('div',{style:{padding:'0 14px 12px',borderTop:'1px solid '+C.border}},
+              h('div',{style:{padding:'10px 0'}},
+                h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'Publication : '),r.nom),
+                h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'Code : '),r.code),
+                r.sym && h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'Symbole : '),r.sym),
+                h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'Quantité : '),r.quantite),
+                h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'Destinataire : '),(toAsm?toAsm.nom:'?')+(toAsm&&toAsm.numero?' ('+toAsm.numero+')':'')),
+                h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'Date : '),fmtD(r.date||r.created_at)),
+                r.notes && h('div',{style:{fontSize:11,color:C.text,marginBottom:4}},h('strong',null,'Votre note : '),r.notes),
+                r.raison_refus && h('div',{style:{fontSize:11,color:C.danger,background:C.danger+'08',padding:'6px 8px',borderRadius:6}},h('strong',null,'Raison du refus : '),r.raison_refus),
+                r.statut==='en_attente' && h('div',{style:{fontSize:10,color:C.warn,fontStyle:'italic',marginTop:4}},'En attente de réponse de l\'assemblée destinataire.'),
+                r.statut==='acceptee' && h('div',{style:{fontSize:10,color:C.ok,fontStyle:'italic',marginTop:4}},'Demande acceptée. L\'assemblée inclura cette publication dans sa commande.'))));
         })))
   );
 }
@@ -1170,9 +1247,8 @@ function DemandesPage({arts, demandes, asmId, onRefresh}) {
         h('div',{style:{flex:1}},h(Inp,{label:'NOM',value:f.proclamateur_nom,onChange:v=>setF({...f,proclamateur_nom:v}),placeholder:'Nom'}))),
       h('div',{style:{marginBottom:11}},
         h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'PUBLICATION'),
-        h('select',{value:f.article_id,onChange:e=>setF({...f,article_id:e.target.value}),style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
-          h('option',{value:''},'— Sélectionner —'),
-          ...arts.map(a=>h('option',{key:a.id,value:a.id},a.code+' — '+a.nom)))),
+        h(SearchSelect,{value:f.article_id,onChange:v=>setF({...f,article_id:v}),placeholder:'Rechercher une publication...',
+          options:arts.map(a=>({value:a.id,label:a.code+' — '+a.nom,sub:a.cat}))})),
       h('div',{style:{display:'flex',gap:8}},
         h('div',{style:{flex:1}},
           h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'QUANTITÉ'),
@@ -1357,7 +1433,7 @@ function App() {
   }
 
   // MAIN
-  return h('div',{style:{maxWidth:430,margin:'0 auto',background:C.bg,minHeight:'100vh',display:'flex',flexDirection:'column'}},
+  return h('div',{className:'app-shell',style:{display:'flex',flexDirection:'column'}},
     h('div',{style:{flex:1,overflowY:'auto'}},
       page==='dashboard' && h(Dashboard,{arts,mvts,asm,user,setPage}),
       page==='stock' && h(StockPage,{arts,onArt:setModal}),

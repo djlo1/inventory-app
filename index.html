@@ -840,7 +840,7 @@ function AnalyticsPanel({arts, mvts, demandes}) {
 
     // AI Suggestions
     (analysis.orderMore.length > 0 || analysis.orderLess.length > 0) && h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
-      h('div',{style:{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}},'🤖 Suggestions IA'),
+      h('div',{style:{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}},'🤖 Suggestions Intéligentes'),
       analysis.orderMore.length > 0 && h('div',{style:{marginBottom:10}},
         h('div',{style:{fontSize:11,fontWeight:600,color:C.ok,marginBottom:6}},'📈 Commander davantage :'),
         ...analysis.orderMore.map(x => h('div',{key:x.art.id,style:{padding:'6px 8px',background:C.ok+'08',borderRadius:6,marginBottom:3,display:'flex',alignItems:'center',justifyContent:'space-between'}},

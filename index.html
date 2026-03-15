@@ -875,10 +875,10 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
   const [showInterForm, setShowInterForm] = useState(false);
   const [interF, setInterF] = useState({to_id:'',code:'',nom:'',sym:'',quantite:1,notes:''});
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { loadAll(); }, [tab, asmId]);
   const loadAll = async () => {
     const [c, ir, ie, aa] = await Promise.all([db.getCommandes(asmId), db.getInterRecu(asmId), db.getInterEnvoye(asmId), db.getAssemblees()]);
-    setCmds(c); setInterRecu(ir); setInterEnvoye(ie); setAllAsm(aa.filter(a => a.id !== asmId));
+    setCmds(c); setInterRecu(ir); setInterEnvoye(ie); setAllAsm(aa);
   };
 
   const loadCmdItems = async (cmdId) => {
@@ -909,7 +909,15 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
     interRecu.filter(r => r.statut==='acceptee').forEach(r => {
       suggestions.push({article_id:null, code:r.code, nom:r.nom+' (pour autre assemblée)', sym:r.sym||'', cat:'', quantite:r.quantite, stock:0, is_inter:true});
     });
-    setItems(suggestions);
+    // Separate into sections for clarity
+    const stockItems = suggestions.filter(s => !s.is_special && !s.is_inter);
+    const specialItems = suggestions.filter(s => s.is_special);
+    const interItems = suggestions.filter(s => s.is_inter);
+    const all = [];
+    if (stockItems.length > 0) { all.push({_section:'Stock à réapprovisionner (' + stockItems.length + ')'}); all.push(...stockItems); }
+    if (specialItems.length > 0) { all.push({_section:'Demandes spéciales des proclamateurs (' + specialItems.length + ')'}); all.push(...specialItems); }
+    if (interItems.length > 0) { all.push({_section:'Demandes inter-assemblées (' + interItems.length + ')'}); all.push(...interItems); }
+    setItems(all.length > 0 ? all : suggestions);
     setGenerated(true);
   };
 
@@ -934,7 +942,7 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
     setBusy(true);
     try {
       const cmd = await db.createCommande({assemblee_id:asmId, statut:'en_attente', notes:'Commande du '+new Date().toLocaleDateString('fr-FR')});
-      const rows = items.map(it => ({commande_id:cmd.id, article_id:it.article_id, code:it.code, nom:it.nom, sym:it.sym||'', cat:it.cat||'', quantite:it.quantite, is_special:!!it.is_special, proclamateur:it.proclamateur||null}));
+      const rows = items.filter(it => !it._section).map(it => ({commande_id:cmd.id, article_id:it.article_id, code:it.code, nom:it.nom, sym:it.sym||'', cat:it.cat||'', quantite:it.quantite, is_special:!!it.is_special, proclamateur:it.proclamateur||null}));
       await db.insertCommandeItems(rows);
       demandes.filter(d=>d.statut==='en_attente').forEach(async d => { await db.updateDemande(d.id,{statut:'commande'}); });
       setItems([]); setGenerated(false);
@@ -948,7 +956,7 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
   const exportPDF = () => {
     const sub = 'Assemblée : '+(asm.nom||'-')+'    N° : '+(asm.numero||'-')+'    Ville : '+(asm.ville||'-');
     const headers = ['Code','Publication','Sym','Qté','Remarque'];
-    const rows = items.map(i => [i.code, i.nom.length>38?i.nom.slice(0,38)+'…':i.nom, i.sym||'', i.quantite, i.is_special?'Spécial: '+(i.proclamateur||''):(i.is_inter?'Inter-assemblée':(i.custom?'Hors base':''))]);
+    const rows = items.filter(i => !i._section).map(i => [i.code, i.nom.length>38?i.nom.slice(0,38)+'…':i.nom, i.sym||'', i.quantite, i.is_special?'Spécial: '+(i.proclamateur||''):(i.is_inter?'Inter-assemblée':(i.custom?'Hors base':''))]);
     genPDF('DEMANDE DE PUBLICATIONS', sub, headers, rows, 'Commande_'+toDay()+'.pdf');
   };
 
@@ -990,11 +998,11 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
       h('button',{onClick:generate,style:{padding:'13px 32px',borderRadius:11,background:C.navy,color:'#fff',fontSize:14,fontWeight:600,cursor:'pointer',border:'none'}},'Générer la commande'))
     : h('div',null,
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
-        h('div',{style:{fontSize:12,color:C.muted}},items.length+' article(s)'),
+        h('div',{style:{fontSize:12,color:C.muted}},items.filter(i=>!i._section).length+' article(s)'),
         items.length>0 && h('div',{style:{display:'flex',gap:4}},
           h('button',{onClick:exportPDF,style:{padding:'5px 10px',borderRadius:6,background:C.navy,color:'#fff',border:'none',cursor:'pointer',fontSize:10,fontWeight:600}},'📄 PDF'),
           h('button',{onClick:saveCommande,disabled:busy,style:{padding:'5px 10px',borderRadius:6,background:C.ok,color:'#fff',border:'none',cursor:'pointer',fontSize:10,fontWeight:600}},busy?'...':'💾 Sauvegarder'))),
-      ...items.map((it,idx) => h('div',{key:idx,style:{background:'#fff',borderRadius:10,padding:'10px 12px',marginBottom:5,border:'1px solid '+(it.is_special?C.gold+'44':it.custom?C.warn+'44':C.border),display:'flex',alignItems:'center',gap:8}},
+      ...items.map((it,idx) => it._section ? h('div',{key:'s'+idx,style:{fontSize:12,fontWeight:700,color:C.navy,padding:'10px 0 4px',borderBottom:'2px solid '+C.gold+'44',marginBottom:4,marginTop:idx>0?8:0}},it._section) : h('div',{key:idx,style:{background:'#fff',borderRadius:10,padding:'10px 12px',marginBottom:5,border:'1px solid '+(it.is_special?C.gold+'44':it.custom?C.warn+'44':C.border),display:'flex',alignItems:'center',gap:8}},
         h('div',{style:{flex:1,minWidth:0}},
           h('div',{style:{fontSize:12,fontWeight:500,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},it.nom),
           h('div',{style:{fontSize:10,color:C.muted}},it.code+(it.is_special?' · ⭐ '+it.proclamateur:'')+(it.custom?' · 🆕 Hors base':'')+(it.is_inter?' · 🔄 Inter':''))),
@@ -1065,7 +1073,7 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
           h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'ASSEMBLÉE DESTINATAIRE'),
           h('select',{value:interF.to_id,onChange:e=>setInterF({...interF,to_id:e.target.value}),style:{width:'100%',padding:'9px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
             h('option',{value:''},'— Sélectionner —'),
-            ...allAsm.map(a=>h('option',{key:a.id,value:a.id},a.nom+(a.numero?' ('+a.numero+')':''))))),
+            ...allAsm.filter(a=>a.id!==asmId).map(a=>h('option',{key:a.id,value:a.id},a.nom+(a.numero?' ('+a.numero+')':''))))),
         h('div',{style:{display:'flex',gap:6,marginBottom:8}},
           h('div',{style:{flex:0.4}},h(Inp,{label:'CODE',value:interF.code,onChange:v=>setInterF({...interF,code:v})})),
           h('div',{style:{flex:1}},h(Inp,{label:'PUBLICATION',value:interF.nom,onChange:v=>setInterF({...interF,nom:v})}))),

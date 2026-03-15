@@ -877,8 +877,15 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
 
   useEffect(() => { loadAll(); }, [tab, asmId]);
   const loadAll = async () => {
-    const [c, ir, ie, aa] = await Promise.all([db.getCommandes(asmId), db.getInterRecu(asmId), db.getInterEnvoye(asmId), db.getAssemblees()]);
-    setCmds(c); setInterRecu(ir); setInterEnvoye(ie); setAllAsm(aa);
+    try {
+      const [c, aa] = await Promise.all([db.getCommandes(asmId), db.getAssemblees()]);
+      setCmds(c); setAllAsm(aa);
+      // Fetch ALL inter records and filter client-side (more reliable)
+      const {data: allInter} = await sb.from('commandes_inter').select('*').order('created_at',{ascending:false});
+      const inter = allInter || [];
+      setInterRecu(inter.filter(r => r.to_assemblee_id === asmId));
+      setInterEnvoye(inter.filter(r => r.from_assemblee_id === asmId));
+    } catch(e) { console.error('loadAll:', e); }
   };
 
   const loadCmdItems = async (cmdId) => {

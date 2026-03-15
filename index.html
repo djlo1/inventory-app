@@ -59,7 +59,8 @@ const ROLES = [
   {id:'assistant', label:'Assistant du préposé', p:['stock','mouvement','inventaire']}
 ];
 const rolePerms = (role) => (ROLES.find(r => r.id === role) || {p:[]}).p;
-const hasPerm = (role, perm, customPerms) => customPerms ? customPerms.includes(perm) : rolePerms(role).includes(perm);
+const hasPerm = (role, perm, customPerms) => role==='superadmin' || (customPerms ? customPerms.includes(perm) : rolePerms(role).includes(perm));
+const isSuperAdmin = (user) => user && user.role === 'superadmin';
 const roleLabel = (r) => (ROLES.find(x => x.id === r) || {}).label || r;
 const PERMS = [{id:'stock',label:'Voir le stock'},{id:'mouvement',label:'Enregistrer mouvements'},{id:'inventaire',label:'Voir inventaire'},{id:'mod_stock',label:'Modifier le stock'},{id:'ajout_art',label:'Ajouter des articles'},{id:'membres',label:'Gérer les membres'},{id:'acces',label:'Gérer les accès'}];
 
@@ -378,7 +379,6 @@ function ConnexionForm({onLogin, goInscription}) {
       if (found && found.length > 0) {
         const membre = found[0];
         db.setSession(membre.assemblee_id, membre.id);
-        console.log('Login OK:', membre.prenom, 'asm:', membre.assemblee_id);
         onLogin(membre);
       } else {
         setErr("Nom d'utilisateur ou code PIN incorrect.");
@@ -503,6 +503,118 @@ function InscriptionForm({onLogin, goConnexion}) {
 // ═══════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════
+// ═══════════════════════════════════════
+// SUPER ADMIN PANEL
+// ═══════════════════════════════════════
+function SuperAdminPanel({user, onSelectAsm, onLogout}) {
+  const [asms, setAsms] = useState([]);
+  const [membres, setMembres] = useState([]);
+  const [tab, setTab] = useState('assemblees');
+  const [showNewAsm, setShowNewAsm] = useState(false);
+  const [newAsm, setNewAsm] = useState({nom:'',numero:'',ville:'',departement:'',pays:'Bénin',langue:'Français'});
+  const [showAddMbr, setShowAddMbr] = useState(false);
+  const [addMbrAsm, setAddMbrAsm] = useState('');
+  const [newMbr, setNewMbr] = useState({prenom:'',nom:'',username:'',tel:'',role:'assistant',pin:'1234'});
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { loadAll(); }, []);
+  const loadAll = async () => {
+    const {data:a} = await sb.from('assemblees').select('*').order('nom');
+    const {data:m} = await sb.from('membres').select('*').order('assemblee_id,prenom');
+    setAsms(a||[]); setMembres(m||[]);
+  };
+
+  const createAsm = async () => {
+    if (!newAsm.nom || !newAsm.numero || busy) return;
+    setBusy(true);
+    try {
+      const a = await db.createAssemblee({...newAsm, numero: newAsm.numero.toUpperCase()});
+      await db.insertDefaultArticles(a.id);
+      setNewAsm({nom:'',numero:'',ville:'',departement:'',pays:'Bénin',langue:'Français'}); setShowNewAsm(false);
+      await loadAll();
+    } catch(e) { alert('Erreur: '+e.message); }
+    setBusy(false);
+  };
+
+  const addMembre = async () => {
+    if (!newMbr.prenom || !newMbr.nom || !newMbr.username || !addMbrAsm || busy) return;
+    setBusy(true);
+    try {
+      await db.createMembre({...newMbr, username:newMbr.username.trim().toLowerCase(), assemblee_id:addMbrAsm});
+      setNewMbr({prenom:'',nom:'',username:'',tel:'',role:'assistant',pin:'1234'}); setShowAddMbr(false);
+      await loadAll();
+    } catch(e) { alert('Erreur: '+e.message); }
+    setBusy(false);
+  };
+
+  const tBtn = (id,l) => h('button',{onClick:()=>setTab(id),style:{flex:1,padding:'8px',borderRadius:7,border:'none',cursor:'pointer',fontSize:12,fontWeight:tab===id?600:400,background:tab===id?'#fff':'transparent',color:tab===id?C.navy:C.muted,boxShadow:tab===id?'0 1px 3px rgba(0,0,0,.08)':'none'}},l);
+
+  return h('div',{style:{padding:'16px 14px 20px'}},
+    h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}},
+      h('div',{style:{fontSize:10,color:C.danger,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase'}},'◆ SUPER ADMIN'),
+      h('button',{onClick:onLogout,style:{padding:'4px 10px',borderRadius:6,background:'#FFF0EE',color:C.danger,fontSize:10,fontWeight:600,cursor:'pointer',border:'none'}},'Déconnexion')),
+    h('div',{style:{fontSize:20,fontWeight:800,color:C.navy,marginBottom:4}},'Panneau d\'administration'),
+    h('div',{style:{fontSize:12,color:C.muted,marginBottom:14}},user.prenom+' '+user.nom+' · Super Admin'),
+
+    h('div',{style:{display:'flex',gap:8,marginBottom:14}},
+      h('div',{style:{flex:1,background:'#fff',borderRadius:10,padding:'12px',border:'1px solid '+C.border,textAlign:'center'}},
+        h('div',{style:{fontSize:24,fontWeight:700,color:C.navy}},asms.length),
+        h('div',{style:{fontSize:10,color:C.muted}},'Assemblées')),
+      h('div',{style:{flex:1,background:'#fff',borderRadius:10,padding:'12px',border:'1px solid '+C.border,textAlign:'center'}},
+        h('div',{style:{fontSize:24,fontWeight:700,color:C.navy}},membres.length),
+        h('div',{style:{fontSize:10,color:C.muted}},'Membres'))),
+
+    h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:8,padding:3,marginBottom:14}},tBtn('assemblees','Assemblées'),tBtn('membres','Tous les membres')),
+
+    tab==='assemblees' && h('div',null,
+      h('button',{onClick:()=>setShowNewAsm(!showNewAsm),style:{width:'100%',padding:'10px',borderRadius:9,background:showNewAsm?'#E8E5DF':C.navy,color:showNewAsm?C.text:'#fff',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',marginBottom:12}},showNewAsm?'Annuler':'+ Nouvelle assemblée'),
+      showNewAsm && h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
+        h(Inp,{label:"NOM *",value:newAsm.nom,onChange:v=>setNewAsm({...newAsm,nom:v})}),
+        h(Inp,{label:"NUMÉRO * (XX0000)",value:newAsm.numero,onChange:v=>setNewAsm({...newAsm,numero:v.toUpperCase().slice(0,6)})}),
+        h('div',{style:{display:'flex',gap:6}},
+          h('div',{style:{flex:1}},h(Inp,{label:'VILLE',value:newAsm.ville,onChange:v=>setNewAsm({...newAsm,ville:v})})),
+          h('div',{style:{flex:1}},h(Inp,{label:'PAYS',value:newAsm.pays,onChange:v=>setNewAsm({...newAsm,pays:v})}))),
+        h('button',{onClick:createAsm,disabled:!newAsm.nom||!newAsm.numero||busy,style:{width:'100%',padding:'10px',borderRadius:8,background:newAsm.nom&&newAsm.numero?C.ok:'#E8E5DF',color:newAsm.nom&&newAsm.numero?'#fff':C.muted,fontSize:12,fontWeight:600,cursor:'pointer',border:'none'}},busy?'Création...':'Créer l\'assemblée')),
+      ...asms.map(a => {
+        const mCount = membres.filter(m => m.assemblee_id===a.id).length;
+        return h('div',{key:a.id,style:{background:'#fff',borderRadius:10,padding:'12px 14px',marginBottom:6,border:'1px solid '+C.border,display:'flex',alignItems:'center',gap:10}},
+          h('div',{style:{width:40,height:40,borderRadius:10,background:C.navy+'11',display:'flex',alignItems:'center',justifyContent:'center',color:C.navy,fontSize:12,fontWeight:700}},a.numero||'?'),
+          h('div',{style:{flex:1}},
+            h('div',{style:{fontSize:13,fontWeight:600,color:C.text}},a.nom),
+            h('div',{style:{fontSize:10,color:C.muted}},(a.ville||'')+(a.departement?' · '+a.departement:'')+' · '+mCount+' membre(s)')),
+          h('button',{onClick:()=>onSelectAsm(a),style:{padding:'6px 12px',borderRadius:7,background:C.gold,color:'#fff',fontSize:10,fontWeight:600,cursor:'pointer',border:'none'}},'Accéder →'));
+      })),
+
+    tab==='membres' && h('div',null,
+      h('button',{onClick:()=>setShowAddMbr(!showAddMbr),style:{width:'100%',padding:'10px',borderRadius:9,background:showAddMbr?'#E8E5DF':C.navy,color:showAddMbr?C.text:'#fff',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',marginBottom:12}},showAddMbr?'Annuler':'+ Ajouter un membre'),
+      showAddMbr && h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
+        h('div',{style:{marginBottom:11}},h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'ASSEMBLÉE *'),
+          h(SearchSelect,{value:addMbrAsm,onChange:v=>setAddMbrAsm(v),placeholder:'Choisir...',
+            options:asms.map(a=>({value:a.id,label:a.nom,sub:a.numero}))})),
+        h(Inp,{label:'PRÉNOM *',value:newMbr.prenom,onChange:v=>setNewMbr({...newMbr,prenom:v})}),
+        h(Inp,{label:'NOM *',value:newMbr.nom,onChange:v=>setNewMbr({...newMbr,nom:v})}),
+        h(Inp,{label:"NOM D'UTILISATEUR *",value:newMbr.username,onChange:v=>setNewMbr({...newMbr,username:v.replace(/\s/g,'').toLowerCase()})}),
+        h('div',{style:{display:'flex',gap:6}},
+          h('div',{style:{flex:1}},h(Inp,{label:'PIN',value:newMbr.pin,onChange:v=>setNewMbr({...newMbr,pin:v.replace(/\D/g,'').slice(0,4)}),type:'password'})),
+          h('div',{style:{flex:1}},h('div',{style:{marginBottom:11}},h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'RÔLE'),
+            h('select',{value:newMbr.role,onChange:e=>setNewMbr({...newMbr,role:e.target.value}),style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
+              ...ROLES.map(r=>h('option',{key:r.id,value:r.id},r.label)))))),
+        h('button',{onClick:addMembre,disabled:!newMbr.prenom||!newMbr.nom||!newMbr.username||!addMbrAsm||busy,style:{width:'100%',padding:'10px',borderRadius:8,background:(newMbr.prenom&&newMbr.nom&&newMbr.username&&addMbrAsm)?C.ok:'#E8E5DF',color:(newMbr.prenom&&newMbr.nom&&newMbr.username&&addMbrAsm)?'#fff':C.muted,fontSize:12,fontWeight:600,cursor:'pointer',border:'none'}},busy?'...':'Ajouter')),
+      ...asms.map(a => {
+        const asmMbrs = membres.filter(m => m.assemblee_id===a.id);
+        if (asmMbrs.length===0) return null;
+        return h('div',{key:a.id,style:{marginBottom:12}},
+          h('div',{style:{fontSize:12,fontWeight:700,color:C.navy,padding:'6px 0',borderBottom:'2px solid '+C.gold+'44',marginBottom:6}},a.nom+' ('+a.numero+')'),
+          ...asmMbrs.map(m => h('div',{key:m.id,style:{background:'#fff',borderRadius:8,padding:'9px 12px',marginBottom:4,border:'1px solid '+C.border,display:'flex',alignItems:'center',gap:8}},
+            h('div',{style:{width:32,height:32,borderRadius:16,background:m.actif!==false?C.navy:'#ccc',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:12,fontWeight:700}},(m.prenom||'?')[0].toUpperCase()),
+            h('div',{style:{flex:1}},
+              h('div',{style:{fontSize:12,fontWeight:500,color:m.actif!==false?C.text:C.muted}},m.prenom+' '+m.nom),
+              h('div',{style:{fontSize:10,color:C.muted}},roleLabel(m.role)+(m.username?' · @'+m.username:'')+(m.actif===false?' · Désactivé':''))),
+            h('button',{onClick:async()=>{await db.updateMembre(m.id,{actif:m.actif===false?true:false});await loadAll();},style:{padding:'4px 8px',borderRadius:5,background:m.actif!==false?'#FFF0EE':'#EEF8F2',color:m.actif!==false?C.danger:C.ok,fontSize:9,fontWeight:600,cursor:'pointer',border:'none'}},m.actif!==false?'Désact.':'Activer'))));
+      }).filter(Boolean))
+  );
+}
+
 function Dashboard({arts,mvts,asm,user,setPage}) {
   const alerts = arts.filter(a => getSt(a) !== 'ok');
   const tot = arts.reduce((s,a) => s+a.stock, 0);
@@ -513,6 +625,7 @@ function Dashboard({arts,mvts,asm,user,setPage}) {
   const on = navigator.onLine;
 
   return h('div',{style:{padding:'16px 14px 20px'}},
+    user.role==='superadmin'&&h('div',{onClick:()=>setPage('_back_sa'),style:{display:'flex',alignItems:'center',gap:4,marginBottom:8,cursor:'pointer'}},h('span',{style:{fontSize:12,color:C.danger,fontWeight:600}},'← Retour Super Admin')),
     h('div',{style:{marginBottom:18}},
       h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between'}},
         h('div',{style:{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase'}},'◆ INVENTORY'),
@@ -1368,6 +1481,7 @@ function App() {
   const [mvts,setMvts] = useState([]);
   const [modal,setModal] = useState(null);
   const [demandes,setDemandes] = useState([]);
+  const [saMode,setSaMode] = useState(false);
 
   const loadData = useCallback(async (asmId) => {
     const [a, m, ar, mv, dm] = await Promise.all([
@@ -1390,12 +1504,17 @@ function App() {
     (async () => {
       try {
         const session = db.getSession();
-        if (session && session.assemblee_id && session.membre_id) {
+        if (session && session.membre_id) {
           const membre = await db.getMembre(session.membre_id);
           if (membre && membre.actif !== false) {
             setUser(membre);
-            await loadData(session.assemblee_id);
-            setScreen('main');
+            if (membre.role === 'superadmin') {
+              setSaMode(true);
+              setScreen('main');
+            } else {
+              await loadData(session.assemblee_id);
+              setScreen('main');
+            }
             return;
           }
         }
@@ -1409,13 +1528,19 @@ function App() {
 
   const handleLogin = async (membre) => {
     setUser(membre);
-    await loadData(membre.assemblee_id);
-    setScreen('main');
+    if (membre.role === 'superadmin') {
+      setSaMode(true);
+      setScreen('main');
+    } else {
+      await loadData(membre.assemblee_id);
+      setScreen('main');
+    }
   };
 
   const handleLogout = () => {
     db.clearSession();
     setUser(null);
+    setSaMode(false);
     setScreen('auth');
   };
 
@@ -1433,16 +1558,26 @@ function App() {
   }
 
   // MAIN
+  if (saMode && user && user.role === 'superadmin') {
+    const saSelectAsm = async (a) => {
+      await loadData(a.id);
+      setSaMode(false);
+    };
+    return h('div',{className:'app-shell',style:{display:'flex',flexDirection:'column',minHeight:'100vh'}},
+      h('div',{style:{flex:1,overflowY:'auto'}},
+        h(SuperAdminPanel,{user,onSelectAsm:saSelectAsm,onLogout:handleLogout})));
+  }
+
   return h('div',{className:'app-shell',style:{display:'flex',flexDirection:'column'}},
     h('div',{style:{flex:1,overflowY:'auto'}},
-      page==='dashboard' && h(Dashboard,{arts,mvts,asm,user,setPage}),
+      page==='dashboard' && h(Dashboard,{arts,mvts,asm,user,setPage:p=>{if(p==='_back_sa'){setSaMode(true);return;}setPage(p);}}),
       page==='stock' && h(StockPage,{arts,onArt:setModal}),
       page==='mouvement' && h(MouvementPage,{arts,mvts,asmId:asm.id,user,onRefresh:refresh}),
       page==='inventaire' && h(InventairePage,{arts,mvts,asm}),
       page==='commandes' && h(CommandesPage,{arts,mvts,demandes,asmId:asm.id,asm,user,onRefresh:refresh}),
       page==='demandes' && h(DemandesPage,{arts,demandes,asmId:asm.id,onRefresh:refresh}),
       page==='settings' && h(SettingsPage,{asm,user,membres,arts,asmId:asm.id,onRefresh:refresh,onLogout:handleLogout})),
-    h(Nav,{page,setPage,alertCount:alerts.length}),
+    h(Nav,{page,setPage:p=>{if(p==='_back_sa'){setSaMode(true);return;}setPage(p);},alertCount:alerts.length}),
     modal && h(ModalArticle,{art:modal,user,mvts,onClose:()=>setModal(null),onRefresh:refresh})
   );
 }

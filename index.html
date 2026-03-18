@@ -544,6 +544,13 @@ function SuperAdminPanel({user, onSelectAsm, onLogout}) {
   const [newMbr, setNewMbr] = useState({prenom:'',nom:'',username:'',tel:'',role:'assistant',pin:'1234'});
   const [busy, setBusy] = useState(false);
   const [editMbrId, setEditMbrId] = useState(null);
+  const [allArts, setAllArts] = useState([]);
+  const [showNewArt, setShowNewArt] = useState(false);
+  const [editArtId, setEditArtId] = useState(null);
+  const [editArtData, setEditArtData] = useState({});
+  const [newArt, setNewArt] = useState({code:'',nom:'',sym:'',cat:'Bibles',stock:'0',min_stock:'5'});
+  const [artSearch, setArtSearch] = useState('');
+  const [artCat, setArtCat] = useState('Tous');
 
   const [stats, setStats] = useState({arts:0,mvts:0,demandes:0,cmds:0});
   useEffect(() => { loadAll(); }, []);
@@ -551,6 +558,9 @@ function SuperAdminPanel({user, onSelectAsm, onLogout}) {
     const {data:a} = await sb.from('assemblees').select('*').order('nom');
     const {data:m} = await sb.from('membres').select('*').order('assemblee_id,prenom');
     setAsms(a||[]); setMembres(m||[]);
+    // Load all articles
+    const {data:ar} = await sb.from('articles').select('*').order('cat,nom');
+    setAllArts(ar||[]);
     // Stats globales
     const {count:artC} = await sb.from('articles').select('*',{count:'exact',head:true});
     const {count:mvtC} = await sb.from('mouvements').select('*',{count:'exact',head:true});
@@ -594,7 +604,7 @@ function SuperAdminPanel({user, onSelectAsm, onLogout}) {
 
     
 
-    h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:8,padding:3,marginBottom:14}},tBtn('dashboard','Tableau de bord'),tBtn('assemblees','Assemblées'),tBtn('membres','Membres')),
+    h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:8,padding:3,marginBottom:14}},tBtn('dashboard','Tableau de bord'),tBtn('assemblees','Assemblées'),tBtn('membres','Membres'),tBtn('publications','Publications')),
 
     tab==='dashboard' && h('div',null,
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}},
@@ -700,7 +710,99 @@ function SuperAdminPanel({user, onSelectAsm, onLogout}) {
                   h('button',{onClick:async()=>{await db.updateMembre(m.id,{actif:m.actif===false?true:false});await loadAll();},style:{flex:1,padding:'7px',borderRadius:7,background:m.actif!==false?'#FFF0EE':'#EEF8F2',color:m.actif!==false?C.danger:C.ok,fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},m.actif!==false?'Désactiver':'Activer'),
                   h('button',{onClick:async()=>{if(confirm('Supprimer définitivement '+m.prenom+' '+m.nom+' ? Cette action est irréversible.')){await db.deleteMembre(m.id);await loadAll();}},style:{flex:1,padding:'7px',borderRadius:7,background:C.danger,color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},'🗑 Supprimer'))));
           }));
-      }).filter(Boolean))
+      }).filter(Boolean)),
+
+    tab==='publications' && h('div',null,
+      h('div',{style:{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}},
+        h('button',{onClick:()=>setShowNewArt(!showNewArt),style:{padding:'8px 14px',borderRadius:8,background:showNewArt?'#E8E5DF':C.navy,color:showNewArt?C.text:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},showNewArt?'Annuler':'+ Ajouter à toutes les assemblées'),
+        h('div',{style:{flex:1,position:'relative'}},
+          h('input',{value:artSearch,onChange:e=>setArtSearch(e.target.value),placeholder:'🔍 Rechercher une publication...',style:{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid '+C.border,fontSize:11,outline:'none',background:'#fff'}}))),
+
+      showNewArt && h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.gold+'33',marginBottom:12}},
+        h('div',{style:{fontSize:12,fontWeight:600,color:C.gold,marginBottom:10}},'Ajouter un article à TOUTES les assemblées'),
+        h('div',{style:{display:'flex',gap:6,marginBottom:6}},
+          h('div',{style:{flex:0.4}},h(Inp,{label:'CODE',value:newArt.code,onChange:v=>setNewArt({...newArt,code:v})})),
+          h('div',{style:{flex:1}},h(Inp,{label:'NOM *',value:newArt.nom,onChange:v=>setNewArt({...newArt,nom:v})}))),
+        h('div',{style:{display:'flex',gap:6,marginBottom:6}},
+          h('div',{style:{flex:1}},h(Inp,{label:'SYMBOLE',value:newArt.sym,onChange:v=>setNewArt({...newArt,sym:v})})),
+          h('div',{style:{flex:1}},h('div',{style:{marginBottom:11}},h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'CATÉGORIE'),
+            h('select',{value:newArt.cat,onChange:e=>setNewArt({...newArt,cat:e.target.value}),style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},...CATS.map(c=>h('option',{key:c},c)))))),
+        h('div',{style:{display:'flex',gap:6,marginBottom:8}},
+          h('div',{style:{flex:1}},h(Inp,{label:'STOCK INITIAL',value:newArt.stock,onChange:v=>setNewArt({...newArt,stock:v})})),
+          h('div',{style:{flex:1}},h(Inp,{label:'SEUIL ALERTE',value:newArt.min_stock,onChange:v=>setNewArt({...newArt,min_stock:v})}))),
+        h('button',{onClick:async()=>{
+          if(!newArt.nom||busy)return;
+          setBusy(true);
+          try{
+            const rows=asms.map(a=>({code:newArt.code||'',nom:newArt.nom,sym:newArt.sym||'',cat:newArt.cat,stock:parseInt(newArt.stock)||0,min_stock:parseInt(newArt.min_stock)||5,assemblee_id:a.id}));
+            await sb.from('articles').insert(rows);
+            setNewArt({code:'',nom:'',sym:'',cat:'Bibles',stock:'0',min_stock:'5'});setShowNewArt(false);
+            await loadAll();
+          }catch(e){alert('Erreur: '+e.message);}
+          setBusy(false);
+        },disabled:!newArt.nom||busy,style:{width:'100%',padding:'10px',borderRadius:8,background:newArt.nom?C.ok:'#E8E5DF',color:newArt.nom?'#fff':C.muted,fontSize:12,fontWeight:600,cursor:'pointer',border:'none'}},busy?'Ajout en cours...':'Ajouter à '+asms.length+' assemblée(s)')),
+
+      h('div',{style:{display:'flex',gap:5,overflowX:'auto',paddingBottom:4,marginBottom:10}},
+        ...['Tous',...CATS].map(c=>h('button',{key:c,onClick:()=>setArtCat(c),style:{padding:'4px 10px',borderRadius:20,fontSize:10,fontWeight:500,whiteSpace:'nowrap',cursor:'pointer',background:artCat===c?C.navy:'#fff',color:artCat===c?'#fff':C.text,border:artCat===c?'none':'1px solid '+C.border}},c))),
+
+      h('div',{style:{fontSize:10,color:C.muted,marginBottom:8}},
+        (()=>{
+          const uniqueCodes = new Set();
+          allArts.forEach(a=>{if(a.code)uniqueCodes.add(a.code);});
+          return uniqueCodes.size+' publications uniques · '+allArts.length+' entrées totales ('+asms.length+' assemblées)';
+        })()),
+
+      (()=>{
+        const grouped={};
+        allArts.forEach(a=>{
+          const key=a.code||a.nom;
+          if(!grouped[key])grouped[key]={...a,count:0,ids:[],assemblee_ids:[]};
+          grouped[key].count++;
+          grouped[key].ids.push(a.id);
+          grouped[key].assemblee_ids.push(a.assemblee_id);
+        });
+        let list=Object.values(grouped);
+        if(artCat!=='Tous')list=list.filter(a=>a.cat===artCat);
+        if(artSearch)list=list.filter(a=>(a.nom||'').toLowerCase().includes(artSearch.toLowerCase())||(a.code||'').includes(artSearch)||(a.sym||'').toLowerCase().includes(artSearch.toLowerCase()));
+        list.sort((a,b)=>(a.cat+a.nom).localeCompare(b.cat+b.nom));
+        return list.length===0?h('div',{style:{textAlign:'center',padding:'20px',color:C.muted,fontSize:12}},'Aucune publication trouvée.'):list.map(a=>{
+          const isExp=editArtId===(a.code||a.nom);
+          return h('div',{key:a.code||a.nom,style:{background:'#fff',borderRadius:10,marginBottom:4,border:'1px solid '+C.border,overflow:'hidden'}},
+            h('div',{onClick:()=>{if(isExp){setEditArtId(null);}else{setEditArtId(a.code||a.nom);setEditArtData({code:a.code||'',nom:a.nom||'',sym:a.sym||'',cat:a.cat||'Bibles',min_stock:String(a.min_stock||0)});}},style:{padding:'9px 12px',cursor:'pointer',display:'flex',alignItems:'center',gap:8}},
+              h('div',{style:{minWidth:36,height:36,borderRadius:8,background:C.navy+'0A',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,color:C.navy,fontWeight:700}},a.code||'?'),
+              h('div',{style:{flex:1,minWidth:0}},
+                h('div',{style:{fontSize:12,fontWeight:500,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},a.nom),
+                h('div',{style:{fontSize:10,color:C.muted}},(a.sym||'-')+' · '+a.cat+' · '+a.count+' assemblée(s)')),
+              h('span',{style:{color:C.muted,fontSize:10}},isExp?'▲':'▼')),
+            isExp&&h('div',{style:{padding:'10px 12px',borderTop:'1px solid '+C.border,background:'#FAFAF8'}},
+              h('div',{style:{display:'flex',gap:6,marginBottom:6}},
+                h('div',{style:{flex:0.4}},h('label',{style:{fontSize:9,color:C.muted,fontWeight:600,display:'block',marginBottom:2}},'CODE'),h('input',{value:editArtData.code,onChange:e=>setEditArtData({...editArtData,code:e.target.value}),style:{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none'}})),
+                h('div',{style:{flex:1}},h('label',{style:{fontSize:9,color:C.muted,fontWeight:600,display:'block',marginBottom:2}},'NOM'),h('input',{value:editArtData.nom,onChange:e=>setEditArtData({...editArtData,nom:e.target.value}),style:{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none'}}))),
+              h('div',{style:{display:'flex',gap:6,marginBottom:8}},
+                h('div',{style:{flex:1}},h('label',{style:{fontSize:9,color:C.muted,fontWeight:600,display:'block',marginBottom:2}},'SYMBOLE'),h('input',{value:editArtData.sym,onChange:e=>setEditArtData({...editArtData,sym:e.target.value}),style:{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none'}})),
+                h('div',{style:{flex:1}},h('label',{style:{fontSize:9,color:C.muted,fontWeight:600,display:'block',marginBottom:2}},'CATÉGORIE'),h('select',{value:editArtData.cat,onChange:e=>setEditArtData({...editArtData,cat:e.target.value}),style:{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:10,outline:'none',background:'#fff'}},...CATS.map(c=>h('option',{key:c},c)))),
+                h('div',{style:{flex:0.5}},h('label',{style:{fontSize:9,color:C.muted,fontWeight:600,display:'block',marginBottom:2}},'SEUIL'),h('input',{value:editArtData.min_stock,onChange:e=>setEditArtData({...editArtData,min_stock:e.target.value}),style:{width:'100%',padding:'6px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none',textAlign:'center'}}))),
+              h('div',{style:{display:'flex',gap:6}},
+                h('button',{onClick:async()=>{
+                  if(busy)return;setBusy(true);
+                  try{
+                    const updates={code:editArtData.code,nom:editArtData.nom,sym:editArtData.sym,cat:editArtData.cat,min_stock:parseInt(editArtData.min_stock)||0};
+                    for(const id of a.ids){await sb.from('articles').update(updates).eq('id',id);}
+                    setEditArtId(null);await loadAll();
+                  }catch(e){alert('Erreur: '+e.message);}
+                  setBusy(false);
+                },style:{flex:1,padding:'8px',borderRadius:7,background:C.navy,color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},busy?'...':'✓ Mettre à jour ('+a.count+' assemblées)'),
+                h('button',{onClick:async()=>{
+                  if(!confirm('Supprimer "'+a.nom+'" de TOUTES les assemblées ('+a.count+') ? Cette action est irréversible.'))return;
+                  setBusy(true);
+                  try{
+                    for(const id of a.ids){await sb.from('articles').delete().eq('id',id);}
+                    setEditArtId(null);await loadAll();
+                  }catch(e){alert('Erreur: '+e.message);}
+                  setBusy(false);
+                },style:{padding:'8px 14px',borderRadius:7,background:C.danger,color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},'🗑 Supprimer'))));
+        });
+      })())
   );
 }
 
@@ -840,7 +942,7 @@ function AnalyticsPanel({arts, mvts, demandes}) {
 
     // AI Suggestions
     (analysis.orderMore.length > 0 || analysis.orderLess.length > 0) && h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:12}},
-      h('div',{style:{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}},'🤖 Suggestions Intéligentes'),
+      h('div',{style:{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}},'🤖 Suggestions IA'),
       analysis.orderMore.length > 0 && h('div',{style:{marginBottom:10}},
         h('div',{style:{fontSize:11,fontWeight:600,color:C.ok,marginBottom:6}},'📈 Commander davantage :'),
         ...analysis.orderMore.map(x => h('div',{key:x.art.id,style:{padding:'6px 8px',background:C.ok+'08',borderRadius:6,marginBottom:3,display:'flex',alignItems:'center',justifyContent:'space-between'}},

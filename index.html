@@ -13,21 +13,41 @@
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Outfit',system-ui,sans-serif;background:#F5F3EE}
+:root{--sidebar:240px;--nav-h:60px;--radius:14px;--shadow:0 2px 12px rgba(27,45,79,.06)}
+body{font-family:'Outfit',system-ui,-apple-system,sans-serif;background:#EDEAE4;color:#1C1C2E;-webkit-font-smoothing:antialiased}
 input,select,button,textarea{font-family:'Outfit',system-ui,sans-serif}
-::-webkit-scrollbar{width:0}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#C8C4BB;border-radius:10px}
 input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
-.app-shell{max-width:430px;margin:0 auto;min-height:100vh;background:#F5F3EE;position:relative}
-button{transition:transform .1s ease,box-shadow .15s ease}
+button{transition:transform .08s ease,box-shadow .15s ease,background .15s ease}
 button:active{transform:scale(0.97)}
 .fade-in{animation:fadeIn .3s ease}
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+
+/* ─── Mobile first ─── */
+.app-shell{min-height:100vh;background:#F5F3EE;display:flex;flex-direction:column}
+.app-sidebar{display:none}
+.app-content{flex:1;overflow-y:auto;padding-bottom:var(--nav-h)}
+.app-bnav{position:fixed;bottom:0;left:0;right:0;z-index:50}
+.page-wrap{padding:16px 16px 24px;max-width:720px;margin:0 auto;width:100%}
+
+/* ─── Tablet ─── */
 @media(min-width:768px){
-  body{background:#E8E5DF}
-  .app-shell{max-width:800px;border-left:1px solid #D8D5CF;border-right:1px solid #D8D5CF;box-shadow:0 0 40px rgba(0,0,0,.06)}
+  body{background:#E5E2DC}
+  .app-shell{flex-direction:row;max-width:1200px;margin:0 auto;min-height:100vh;border-radius:0;box-shadow:0 0 60px rgba(0,0,0,.08)}
+  .app-sidebar{display:flex;flex-direction:column;width:var(--sidebar);min-height:100vh;background:#fff;border-right:1px solid #E8E5DF;position:sticky;top:0;flex-shrink:0;z-index:40}
+  .app-content{padding-bottom:0;min-height:100vh}
+  .app-bnav{display:none}
+  .page-wrap{padding:24px 28px 32px;max-width:840px}
 }
+
+/* ─── Desktop ─── */
 @media(min-width:1200px){
-  .app-shell{max-width:1000px}
+  .app-shell{max-width:1400px;border-left:1px solid #D8D5CF;border-right:1px solid #D8D5CF}
+  .app-sidebar{width:260px}
+  .page-wrap{padding:28px 36px 40px;max-width:960px}
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -341,16 +361,16 @@ function Badge({s}) {
 }
 
 function Stat({label,val,sub,color}) {
-  return h('div',{style:{background:'#fff',borderRadius:12,padding:'13px 14px',border:'1px solid '+C.border,flex:1}},
-    h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:3}},label),
-    h('div',{style:{fontSize:24,fontWeight:700,color:color||C.navy,lineHeight:1}},val),
-    sub && h('div',{style:{fontSize:10,color:C.muted,marginTop:2}},sub)
+  return h('div',{style:{background:'#fff',borderRadius:14,padding:'16px 18px',border:'1px solid '+C.border,flex:1,boxShadow:'0 1px 4px rgba(0,0,0,.03)'}},
+    h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:6,fontWeight:500}},label),
+    h('div',{style:{fontSize:28,fontWeight:800,color:color||C.navy,lineHeight:1}},val),
+    sub && h('div',{style:{fontSize:11,color:C.muted,marginTop:4}},sub)
   );
 }
 
 function ArtCard({art,onClick}) {
   const s = getSt(art); const {c,bg} = stStyle(s);
-  return h('div',{onClick:()=>onClick(art),style:{background:'#fff',borderRadius:12,padding:'11px 14px',marginBottom:7,cursor:'pointer',border:'1px solid '+(s==='ok'?C.border:c+'44'),display:'flex',alignItems:'center',gap:10}},
+  return h('div',{onClick:()=>onClick(art),style:{background:'#fff',borderRadius:14,padding:'13px 16px',marginBottom:8,cursor:'pointer',border:'1px solid '+(s==='ok'?C.border:c+'44'),display:'flex',alignItems:'center',gap:12,boxShadow:'0 1px 3px rgba(0,0,0,.02)',transition:'box-shadow .15s ease'}},
     h('div',{style:{minWidth:38,height:38,borderRadius:8,background:bg,display:'flex',alignItems:'center',justifyContent:'center'}},
       h('span',{style:{fontSize:8,color:c,fontWeight:700,textAlign:'center',lineHeight:1.2}},art.code)),
     h('div',{style:{flex:1,minWidth:0}},
@@ -417,12 +437,12 @@ function ConnexionForm({onLogin, goInscription}) {
     setBusy(false);
   };
 
-  return h('div',{style:{padding:'40px 20px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'100vh'}},
+  return h('div',{style:{padding:'40px 24px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'100vh',background:'linear-gradient(135deg,#F5F3EE 0%,#EBE8E2 100%)'}},
     h('div',{style:{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase',marginBottom:4}},'◆ INVENTORY'),
-    h('div',{style:{fontSize:22,fontWeight:800,color:C.navy,marginBottom:6}},'Connexion'),
+    h('div',{style:{fontSize:26,fontWeight:800,color:C.navy,marginBottom:8}},'Connexion'),
     h('div',{style:{fontSize:12,color:C.muted,marginBottom:24,textAlign:'center'}},"Entrez votre nom d'utilisateur et votre code PIN"),
     err && h('div',{style:{background:'#FFF0EE',border:'1px solid '+C.danger+'33',borderRadius:9,padding:'8px 14px',marginBottom:12,fontSize:12,color:C.danger,width:'100%',maxWidth:340,textAlign:'center'}},err),
-    h('div',{style:{width:'100%',maxWidth:340}},
+    h('div',{style:{width:'100%',maxWidth:380}},
       h(Inp,{label:"NOM D'UTILISATEUR",value:username,onChange:v=>setUsername(v),placeholder:'Ex: djlo.alo'}),
       h(Inp,{label:'CODE PIN',value:pin,onChange:v=>setPin(v.replace(/\D/g,'').slice(0,4)),placeholder:'••••',type:'password'}),
       h('button',{onClick:go,disabled:!username||pin.length<4||busy,
@@ -493,14 +513,14 @@ function InscriptionForm({onLogin, goConnexion}) {
     }
   };
 
-  return h('div',{style:{padding:'40px 20px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'100vh'}},
+  return h('div',{style:{padding:'40px 24px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'100vh',background:'linear-gradient(135deg,#F5F3EE 0%,#EBE8E2 100%)'}},
     h('div',{style:{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase',marginBottom:4}},'◆ INVENTORY'),
-    h('div',{style:{fontSize:22,fontWeight:800,color:C.navy,marginBottom:6}}, step===1 ? 'Nouvelle assemblée' : 'Votre profil'),
+    h('div',{style:{fontSize:26,fontWeight:800,color:C.navy,marginBottom:8}}, step===1 ? 'Nouvelle assemblée' : 'Votre profil'),
     h('div',{style:{fontSize:12,color:C.muted,marginBottom:24,textAlign:'center'}},
       step===1 ? "Renseignez les informations de votre assemblée" : "Créez votre compte administrateur"),
     err && h('div',{style:{background:'#FFF0EE',border:'1px solid '+C.danger+'33',borderRadius:9,padding:'8px 14px',marginBottom:12,fontSize:12,color:C.danger,width:'100%',maxWidth:340,textAlign:'center'}},err),
 
-    step===1 && h('div',{style:{width:'100%',maxWidth:340}},
+    step===1 && h('div',{style:{width:'100%',maxWidth:380}},
       h(Inp,{label:"NOM DE L'ASSEMBLÉE *",value:asm.nom,onChange:v=>setAsm({...asm,nom:v}),placeholder:'Ex: Assemblée de Cotonou'}),
       h('div',{style:{marginBottom:11}},
         h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},"NUMÉRO DE L'ASSEMBLÉE * (format: XX0000)"),
@@ -519,7 +539,7 @@ function InscriptionForm({onLogin, goConnexion}) {
       h('button',{onClick:async()=>{if(!step1Ok)return;setErr('');const{data:ex}=await sb.from('assemblees').select('nom,numero').eq('numero',asm.numero.toUpperCase());if(ex&&ex.length>0){setErr('ℹ️ L\'assemblée '+ex[0].nom+' ('+ex[0].numero+') existe déjà. Votre compte sera ajouté à cette assemblée.');}setStep(2);},disabled:!step1Ok,
         style:{width:'100%',padding:'13px',borderRadius:11,background:step1Ok?C.navy:'#E8E5DF',color:step1Ok?'#fff':C.muted,fontSize:14,fontWeight:600,cursor:step1Ok?'pointer':'not-allowed',border:'none'}},'Continuer →')),
 
-    step===2 && h('div',{style:{width:'100%',maxWidth:340}},
+    step===2 && h('div',{style:{width:'100%',maxWidth:380}},
       h(Inp,{label:'PRÉNOM *',value:usr.prenom,onChange:v=>setUsr({...usr,prenom:v}),placeholder:'Votre prénom'}),
       h(Inp,{label:'NOM *',value:usr.nom,onChange:v=>setUsr({...usr,nom:v}),placeholder:'Votre nom'}),
       h(Inp,{label:"NOM D'UTILISATEUR *",value:usr.username,onChange:v=>setUsr({...usr,username:v.replace(/\s/g,'').toLowerCase()}),placeholder:'Ex: djlo.alo'}),
@@ -613,8 +633,8 @@ function SuperAdminPanel({user, onSelectAsm, onLogout}) {
 
   const tBtn = (id,l) => h('button',{onClick:()=>setTab(id),style:{flex:1,padding:'8px',borderRadius:7,border:'none',cursor:'pointer',fontSize:12,fontWeight:tab===id?600:400,background:tab===id?'#fff':'transparent',color:tab===id?C.navy:C.muted,boxShadow:tab===id?'0 1px 3px rgba(0,0,0,.08)':'none'}},l);
 
-  return h('div',{style:{padding:'16px 14px 20px'}},
-    h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}},
+  return h('div',null,
+    h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}},
       h('div',{style:{fontSize:10,color:C.danger,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase'}},'◆ SUPER ADMIN'),
       h('button',{onClick:onLogout,style:{padding:'4px 10px',borderRadius:6,background:'#FFF0EE',color:C.danger,fontSize:10,fontWeight:600,cursor:'pointer',border:'none'}},'Déconnexion')),
     h('div',{style:{fontSize:20,fontWeight:800,color:C.navy,marginBottom:4}},'Panneau d\'administration'),
@@ -622,10 +642,10 @@ function SuperAdminPanel({user, onSelectAsm, onLogout}) {
 
     
 
-    h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:8,padding:3,marginBottom:14}},tBtn('dashboard','Tableau de bord'),tBtn('assemblees','Assemblées'),tBtn('membres','Membres'),tBtn('publications','Publications')),
+    h('div',{style:{display:'flex',background:'#EDEAE4',borderRadius:10,padding:3,marginBottom:14}},tBtn('dashboard','Tableau de bord'),tBtn('assemblees','Assemblées'),tBtn('membres','Membres'),tBtn('publications','Publications')),
 
     tab==='dashboard' && h('div',null,
-      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}},
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}},
         h('div',{style:{background:'#fff',borderRadius:10,padding:'12px',border:'1px solid '+C.border,textAlign:'center'}},
           h('div',{style:{fontSize:28,fontWeight:700,color:C.navy}},asms.length),
           h('div',{style:{fontSize:10,color:C.muted}},'Assemblées')),
@@ -990,7 +1010,7 @@ function Dashboard({arts,mvts,asm,user,setPage,demandes}) {
   const rec = mvts.slice(0,6);
   const on = navigator.onLine;
 
-  return h('div',{style:{padding:'16px 14px 20px'}},
+  return h('div',null,
     (() => {
       const ae = localStorage.getItem('inv_alert_enabled')==='true';
       const ad = parseInt(localStorage.getItem('inv_alert_day')||'25');
@@ -1006,19 +1026,19 @@ function Dashboard({arts,mvts,asm,user,setPage,demandes}) {
         h('button',{onClick:()=>{setPage('inventaire');},style:{padding:'5px 10px',borderRadius:6,background:C.gold,color:'#fff',fontSize:10,fontWeight:600,cursor:'pointer',border:'none'}},'Exporter'),
         h('span',{onClick:()=>{localStorage.setItem(dismissKey,'true');location.reload();},style:{cursor:'pointer',color:C.muted,fontSize:14}},'✕')) : null;
     })(),
-    h('div',{style:{marginBottom:18}},
+    h('div',{style:{marginBottom:20}},
       h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between'}},
-        h('div',{style:{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase'}},'◆ INVENTORY'),
-        h('div',{style:{display:'flex',alignItems:'center',gap:4}},
-          h('div',{style:{width:6,height:6,borderRadius:3,background:on?C.ok:C.muted}}),
-          h('span',{style:{fontSize:9,color:on?C.ok:C.muted}},on?'En ligne':'Hors ligne'))),
-      h('div',{style:{fontSize:22,fontWeight:800,color:C.navy,lineHeight:1.1,marginTop:2}},asm.nom||'Mon Assemblée'),
-      h('div',{style:{fontSize:12,color:C.muted,marginTop:3}},(asm.ville?asm.ville+' · ':'')+user.prenom+' · '+roleLabel(user.role))),
+        h('div',null,
+          h('div',{style:{fontSize:24,fontWeight:800,color:C.navy,lineHeight:1.1}},asm.nom||'Mon Assemblée'),
+          h('div',{style:{fontSize:13,color:C.muted,marginTop:4}},(asm.ville?asm.ville+' · ':'')+user.prenom+' · '+roleLabel(user.role))),
+        h('div',{style:{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',background:'#fff',borderRadius:20,border:'1px solid '+C.border}},
+          h('div',{style:{width:7,height:7,borderRadius:4,background:on?C.ok:C.muted}}),
+          h('span',{style:{fontSize:10,color:on?C.ok:C.muted,fontWeight:500}},on?'En ligne':'Hors ligne')))),
 
-    h('div',{style:{display:'flex',gap:8,marginBottom:8}},
+    h('div',{style:{display:'flex',gap:10,marginBottom:10}},
       h(Stat,{label:'Stock total',val:tot,sub:arts.length+' articles'}),
       h(Stat,{label:'Alertes',val:alerts.length,sub:alerts.length>0?'à traiter':'tout va bien',color:alerts.length>0?C.danger:C.ok})),
-    h('div',{style:{display:'flex',gap:8,marginBottom:18}},
+    h('div',{style:{display:'flex',gap:10,marginBottom:20}},
       h(Stat,{label:'Sorties du mois',val:sortM,color:C.gold}),
       h(Stat,{label:'Reçus ce mois',val:entM,color:C.navy})),
 
@@ -1123,7 +1143,7 @@ function StockPage({arts,onArt,asmId,user,onRefresh}) {
   }, [arts.length]);
 
   return h('div',null,
-    h('div',{style:{padding:'14px 14px 8px',background:C.bg,position:'sticky',top:0,zIndex:10}},
+    h('div',{style:{paddingBottom:8,background:C.bg,position:'sticky',top:0,zIndex:10}},
       h('div',{style:{fontSize:18,fontWeight:700,color:C.navy,marginBottom:10}},'Stock des publications'),
       h('div',{style:{position:'relative',marginBottom:8}},
         h('span',{style:{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:C.muted,fontSize:14}},'🔍'),
@@ -1132,7 +1152,7 @@ function StockPage({arts,onArt,asmId,user,onRefresh}) {
       !q && h('div',{style:{display:'flex',gap:5,overflowX:'auto',paddingBottom:2}},
         ...CATS.map(c => {
           const al = alertCnt(c);
-          return h('button',{key:c,onClick:()=>{setCat(c);setShowArchived(false);setShowNewIssue(false);},style:{padding:'5px 11px',borderRadius:20,fontSize:11,fontWeight:500,whiteSpace:'nowrap',cursor:'pointer',background:cat===c?C.navy:'#fff',color:cat===c?'#fff':C.text,border:cat===c?'none':'1px solid '+C.border,position:'relative'}},
+          return h('button',{key:c,onClick:()=>{setCat(c);setShowArchived(false);setShowNewIssue(false);},style:{padding:'5px 11px',borderRadius:20,fontSize:11,fontWeight:500,whiteSpace:'nowrap',cursor:'pointer',background:cat===c?C.navy:'#fff',color:cat===c?'#fff':C.text,border:cat===c?'none':'1px solid '+C.border,boxShadow:cat===c?'0 2px 8px rgba(27,45,79,.2)':'none',position:'relative'}},
             c, al>0 && h('span',{style:{position:'absolute',top:-4,right:-4,width:13,height:13,background:C.danger,borderRadius:'50%',fontSize:8,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}},al));
         })),
 
@@ -1151,7 +1171,7 @@ function StockPage({arts,onArt,asmId,user,onRefresh}) {
         h('div',{style:{flex:0.5}},h(Inp,{label:'STOCK',value:newIssue.stock,onChange:v=>setNewIssue({...newIssue,stock:v})}))),
       h('button',{onClick:addNewIssue,disabled:!newIssue.nom||busy,style:{width:'100%',padding:'10px',borderRadius:8,background:newIssue.nom?C.ok:'#E8E5DF',color:newIssue.nom?'#fff':C.muted,fontSize:12,fontWeight:600,cursor:'pointer',border:'none'}},busy?'Ajout...':'Ajouter le numéro')),
 
-    h('div',{style:{padding:'6px 14px 20px'}},
+    h('div',{style:{paddingTop:6}},
       q && h('div',{style:{fontSize:11,color:C.muted,marginBottom:6}},visibleArts.length+' résultat(s)'),
       visibleArts.length===0 && h('div',{style:{textAlign:'center',padding:'30px',color:C.muted,fontSize:13}},showArchived?'Aucun article archivé':'Aucune publication trouvée'),
       ...visibleArts.map(a => h('div',{key:a.id,style:{position:'relative'}},
@@ -1298,12 +1318,12 @@ function MouvementPage({arts,mvts,asmId,user,onRefresh,arrivages,membres}) {
   const rec = mvts.slice(0,5);
   const mTab = (id,label,icon) => h('button',{key:id,onClick:()=>setMode(id),style:{flex:1,padding:'8px 4px',borderRadius:7,border:'none',cursor:'pointer',fontWeight:600,fontSize:11,background:mode===id?'#fff':'transparent',color:mode===id?C.navy:C.muted,boxShadow:mode===id?'0 1px 4px rgba(0,0,0,.1)':'none',display:'flex',alignItems:'center',justifyContent:'center',gap:4}},h('span',{style:{fontSize:14}},icon),label);
 
-  return h('div',{style:{padding:'14px'}},
-    h('div',{style:{fontSize:18,fontWeight:700,color:C.navy,marginBottom:12}},'Mouvements de stock'),
+  return h('div',null,
+    h('div',{style:{fontSize:20,fontWeight:800,color:C.navy,marginBottom:14}},'Mouvements de stock'),
     ok && h('div',{style:{background:'#EEF8F2',border:'1px solid '+C.ok+'33',borderRadius:9,padding:'10px 13px',marginBottom:10,display:'flex',alignItems:'center',gap:7}},h('span',{style:{color:C.ok,fontSize:16}},'✓'),h('span',{style:{fontSize:12,color:C.ok,fontWeight:500}},ok)),
     err && h('div',{style:{background:'#FFF0EE',border:'1px solid '+C.danger+'33',borderRadius:9,padding:'10px 13px',marginBottom:10,display:'flex',alignItems:'center',gap:7}},h('span',{style:{color:C.danger,fontSize:16}},'⚠'),h('span',{style:{fontSize:12,color:C.danger,fontWeight:500}},err)),
 
-    h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:9,padding:3,marginBottom:14}},mTab('sortie','Sortie','↓'),mTab('arrivage','Arrivage','📦'),mTab('ajustement','Ajuster','✎')),
+    h('div',{style:{display:'flex',background:'#EDEAE4',borderRadius:10,padding:3,marginBottom:14}},mTab('sortie','Sortie','↓'),mTab('arrivage','Arrivage','📦'),mTab('ajustement','Ajuster','✎')),
 
     // ═══ SORTIE RAPIDE ═══
     mode==='sortie' && h('div',null,
@@ -1439,8 +1459,8 @@ function InventairePage({arts,mvts,asm}) {
   const tEnt = rows.reduce((s,a)=>s+a.ent,0);
   const tSort = rows.reduce((s,a)=>s+a.sort,0);
 
-  return h('div',{style:{padding:'14px 14px 20px'}},
-    h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}},h('div',{style:{fontSize:18,fontWeight:700,color:C.navy}},'Inventaire mensuel'),rows.length>0&&h('button',{onClick:()=>{const sub='Assemblée : '+(asm?asm.nom:'')+'    Période : '+fmtMonth(month);const hd=['Code','Publication','Sym','Init','Entrées','Sorties','Stock'];const bd=rows.map(a=>[a.code,a.nom.length>35?a.nom.slice(0,35)+'…':a.nom,a.sym||'',a.ini!=null?a.ini:'-',a.ent>0?'+'+a.ent:'-',a.sort>0?a.sort:'-',a.act!=null?a.act:'-']);genPDF('ÉTAT MENSUEL DU STOCK',sub,hd,bd,'Inventaire_'+month+'.pdf');},style:{padding:'6px 12px',borderRadius:8,background:C.navy,color:'#fff',border:'none',cursor:'pointer',fontSize:11,fontWeight:600}},'📄 PDF')),
+  return h('div',null,
+    h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}},h('div',{style:{fontSize:20,fontWeight:800,color:C.navy}},'Inventaire mensuel'),rows.length>0&&h('button',{onClick:()=>{const sub='Assemblée : '+(asm?asm.nom:'')+'    Période : '+fmtMonth(month);const hd=['Code','Publication','Sym','Init','Entrées','Sorties','Stock'];const bd=rows.map(a=>[a.code,a.nom.length>35?a.nom.slice(0,35)+'…':a.nom,a.sym||'',a.ini!=null?a.ini:'-',a.ent>0?'+'+a.ent:'-',a.sort>0?a.sort:'-',a.act!=null?a.act:'-']);genPDF('ÉTAT MENSUEL DU STOCK',sub,hd,bd,'Inventaire_'+month+'.pdf');},style:{padding:'6px 12px',borderRadius:8,background:C.navy,color:'#fff',border:'none',cursor:'pointer',fontSize:11,fontWeight:600}},'📄 PDF')),
     h('input',{type:'month',value:month,onChange:e=>setMonth(e.target.value),style:{width:'100%',padding:'9px 11px',borderRadius:9,border:'1px solid '+C.border,fontSize:13,outline:'none',background:'#fff',marginBottom:12}}),
     h('div',{style:{display:'flex',gap:8,marginBottom:12}},
       h('div',{style:{flex:1,background:'#EEF8F2',borderRadius:9,padding:'10px 12px',border:'1px solid '+C.ok+'33'}},h('div',{style:{fontSize:10,color:C.muted,textTransform:'uppercase'}},'Entrées'),h('div',{style:{fontSize:20,fontWeight:700,color:C.ok}},tEnt)),
@@ -1488,9 +1508,9 @@ function SettingsPage({asm,user,membres,arts,asmId,onRefresh,onLogout}) {
 
   const tBtn = (id,l) => h('button',{onClick:()=>setTab(id),style:{flex:1,padding:'7px',borderRadius:6,border:'none',cursor:'pointer',fontSize:10,fontWeight:tab===id?600:400,background:tab===id?'#fff':'transparent',color:tab===id?C.navy:C.muted,boxShadow:tab===id?'0 1px 3px rgba(0,0,0,.08)':'none'}},l);
 
-  return h('div',{style:{padding:'14px 14px 20px'}},
-    h('div',{style:{fontSize:18,fontWeight:700,color:C.navy,marginBottom:14}},'Paramètres'),
-    h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:8,padding:3,marginBottom:14,gap:1}},
+  return h('div',null,
+    h('div',{style:{fontSize:20,fontWeight:800,color:C.navy,marginBottom:16}},'Paramètres'),
+    h('div',{style:{display:'flex',background:'#EDEAE4',borderRadius:10,padding:3,marginBottom:14,gap:1}},
       tBtn('profil','Profil'),tBtn('assemblee','Assemblée'),
       hasPerm(user.role,'membres',user.perms) && tBtn('membres','Membres'),
       hasPerm(user.role,'ajout_art',user.perms) && tBtn('articles','Articles'),
@@ -1819,9 +1839,9 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
   const interColors = {en_attente:{bg:'#FFF4EE',c:C.warn,l:'En attente'}, acceptee:{bg:'#F0F4FF',c:C.navy,l:'Acceptée'}, refusee:{bg:'#FFF0EE',c:C.danger,l:'Refusée'}, recue:{bg:'#EEF8F2',c:C.ok,l:'Reçue'}};
   const mainTBtn = (id,l) => h('button',{onClick:()=>setTab(id),style:{flex:1,padding:'8px',borderRadius:7,border:'none',cursor:'pointer',fontSize:11,fontWeight:tab===id?600:400,background:tab===id?'#fff':'transparent',color:tab===id?C.navy:C.muted,boxShadow:tab===id?'0 1px 3px rgba(0,0,0,.08)':'none'}},l);
 
-  return h('div',{style:{padding:'14px 14px 20px'}},
-    h('div',{style:{fontSize:18,fontWeight:700,color:C.navy,marginBottom:10}},'Commandes'),
-    h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:8,padding:3,marginBottom:14,gap:1}},mainTBtn('generer','Nouvelle'),mainTBtn('historique','Historique'),mainTBtn('inter','Inter-assemblée')),
+  return h('div',null,
+    h('div',{style:{fontSize:20,fontWeight:800,color:C.navy,marginBottom:12}},'Commandes'),
+    h('div',{style:{display:'flex',background:'#EDEAE4',borderRadius:10,padding:3,marginBottom:14,gap:1}},mainTBtn('generer','Nouvelle'),mainTBtn('historique','Historique'),mainTBtn('inter','Inter-assemblée')),
 
     // ═══ TAB: GENERER ═══
     tab==='generer' && (!generated ? h('div',{style:{textAlign:'center',padding:'24px 16px'}},
@@ -2024,9 +2044,9 @@ function DemandesPage({arts, demandes, asmId, onRefresh}) {
   const updateStatut = async (id, statut) => { await db.updateDemande(id, {statut}); await onRefresh(); };
   const statutStyle = {en_attente:{bg:'#FFF4EE',c:C.warn,label:'En attente'}, commande:{bg:'#F0F4FF',c:C.navy,label:'Commandé'}, recu:{bg:'#EEF8F2',c:C.ok,label:'Reçu'}};
 
-  return h('div',{style:{padding:'14px 14px 20px'}},
+  return h('div',null,
     h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}},
-      h('div',{style:{fontSize:18,fontWeight:700,color:C.navy}},'Demandes spéciales'),
+      h('div',{style:{fontSize:20,fontWeight:800,color:C.navy}},'Demandes spéciales'),
       h('button',{onClick:()=>setShow(!show),style:{padding:'5px 11px',borderRadius:7,background:show?'#E8E5DF':C.navy,color:show?C.text:'#fff',fontSize:11,fontWeight:500,cursor:'pointer',border:'none'}},show?'Annuler':'+ Nouvelle')),
 
     show && h('div',{style:{background:'#fff',borderRadius:12,padding:'14px',border:'1px solid '+C.border,marginBottom:14}},
@@ -2115,7 +2135,7 @@ function ModalArticle({art,user,mvts,onClose,onRefresh}) {
   };
 
   return h('div',{onClick:onClose,style:{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:100,display:'flex',alignItems:'flex-end'}},
-    h('div',{onClick:e=>e.stopPropagation(),style:{background:C.bg,borderRadius:'18px 18px 0 0',width:'100%',maxWidth:430,margin:'0 auto',maxHeight:'80vh',overflow:'auto',padding:'16px 14px 28px'}},
+    h('div',{onClick:e=>e.stopPropagation(),style:{background:C.bg,borderRadius:'18px 18px 0 0',width:'100%',maxWidth:540,margin:'0 auto',maxHeight:'85vh',overflow:'auto',padding:'20px 20px 32px'}},
       h('div',{style:{width:32,height:4,background:C.border,borderRadius:2,margin:'0 auto 14px'}}),
       h('div',{style:{display:'flex',alignItems:'flex-start',gap:10,marginBottom:14}},
         h('div',{style:{minWidth:44,height:44,borderRadius:9,background:bg,display:'flex',alignItems:'center',justifyContent:'center'}},h('span',{style:{fontSize:9,color:c,fontWeight:700}},art.code)),
@@ -2156,18 +2176,43 @@ function ModalArticle({art,user,mvts,onClose,onRefresh}) {
 // ═══════════════════════════════════════
 // NAV
 // ═══════════════════════════════════════
-function Nav({page,setPage,alertCount}) {
-  const items = [{id:'dashboard',icon:'⌂',label:'Accueil'},{id:'stock',icon:'▣',label:'Stock'},{id:'mouvement',icon:'⇅',label:'Mouv.'},{id:'commandes',icon:'▦',label:'Cmd.'},{id:'demandes',icon:'☆',label:'Spécial'},{id:'inventaire',icon:'▤',label:'Invent.'},{id:'settings',icon:'⚙',label:'Régl.'}];
-  return h('div',{style:{position:'sticky',bottom:0,background:'#fff',borderTop:'1px solid '+C.border,boxShadow:'0 -2px 12px rgba(0,0,0,.06)',display:'flex',padding:'7px 0 10px',zIndex:50}},
-    ...items.map(({id,icon,label}) => {
-      const active = page===id;
-      const badge = id==='stock' && alertCount>0;
+function Nav({page,setPage,alertCount,asm,user}) {
+  const items = [{id:'dashboard',icon:'⌂',label:'Accueil'},{id:'stock',icon:'▣',label:'Stock'},{id:'mouvement',icon:'⇅',label:'Mouvements'},{id:'commandes',icon:'▦',label:'Commandes'},{id:'demandes',icon:'☆',label:'Spécial'},{id:'inventaire',icon:'▤',label:'Inventaire'},{id:'settings',icon:'⚙',label:'Réglages'}];
+
+  // ─── Sidebar (desktop) ───
+  const sidebar = h('div',{className:'app-sidebar'},
+    h('div',{style:{padding:'20px 18px 12px'}},
+      h('div',{style:{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase',marginBottom:2}},'◆ INVENTORY'),
+      h('div',{style:{fontSize:15,fontWeight:700,color:C.navy,lineHeight:1.2,marginTop:4}},asm?asm.nom:''),
+      asm&&asm.ville&&h('div',{style:{fontSize:11,color:C.muted,marginTop:3}},asm.ville),
+      user&&h('div',{style:{fontSize:10,color:C.gold,fontWeight:500,marginTop:4}},user.prenom+' · '+roleLabel(user.role))),
+    h('div',{style:{height:1,background:'#E8E5DF',margin:'4px 16px 8px'}}),
+    h('div',{style:{flex:1,padding:'4px 10px',overflowY:'auto'}},
+      ...items.map(({id,icon,label})=>{
+        const active=page===id;
+        const badge=id==='stock'&&alertCount>0;
+        return h('button',{key:id,onClick:()=>setPage(id),style:{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 12px',marginBottom:2,borderRadius:10,border:'none',cursor:'pointer',background:active?C.navy+'0C':'transparent',color:active?C.navy:C.muted,fontWeight:active?600:400,fontSize:13,textAlign:'left',position:'relative'}},
+          h('span',{style:{fontSize:17,width:22,textAlign:'center',lineHeight:1}},icon),
+          h('span',null,label),
+          badge&&h('span',{style:{marginLeft:'auto',minWidth:18,height:18,background:C.danger,borderRadius:9,fontSize:9,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}},alertCount));
+      })),
+    h('div',{style:{padding:'12px 16px',borderTop:'1px solid #E8E5DF'}},
+      h('div',{style:{fontSize:9,color:C.muted,textAlign:'center'}},'Inventory · 2026'))
+  );
+
+  // ─── Bottom nav (mobile) ───
+  const bnav = h('div',{className:'app-bnav',style:{background:'#fff',borderTop:'1px solid '+C.border,boxShadow:'0 -2px 12px rgba(0,0,0,.06)',display:'flex',padding:'6px 0 10px'}},
+    ...items.map(({id,icon,label})=>{
+      const active=page===id;
+      const badge=id==='stock'&&alertCount>0;
       return h('button',{key:id,onClick:()=>setPage(id),style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:2,background:'none',border:'none',cursor:'pointer',padding:'2px 0'}},
         h('div',{style:{position:'relative'}},
-          h('span',{style:{fontSize:18,color:active?C.navy:C.muted,lineHeight:1}},icon),
-          badge && h('span',{style:{position:'absolute',top:-5,right:-5,width:13,height:13,background:C.danger,borderRadius:'50%',fontSize:7,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}},alertCount)),
+          h('span',{style:{fontSize:17,color:active?C.navy:C.muted,lineHeight:1}},icon),
+          badge&&h('span',{style:{position:'absolute',top:-5,right:-5,width:13,height:13,background:C.danger,borderRadius:'50%',fontSize:7,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}},alertCount)),
         h('span',{style:{fontSize:8,color:active?C.navy:C.muted,fontWeight:active?700:400}},label));
     }));
+
+  return h(React.Fragment,null,sidebar,bnav);
 }
 
 // ═══════════════════════════════════════
@@ -2269,22 +2314,24 @@ function App() {
       await loadData(a.id);
       setSaMode(false);
     };
-    return h('div',{className:'app-shell',style:{display:'flex',flexDirection:'column',minHeight:'100vh'}},
-      h('div',{style:{flex:1,overflowY:'auto'}},
-        h(SuperAdminPanel,{user,onSelectAsm:saSelectAsm,onLogout:handleLogout})));
+    return h('div',{className:'app-shell'},
+      h('div',{className:'app-content',style:{flex:1}},
+        h('div',{className:'page-wrap',style:{maxWidth:1000}},
+          h(SuperAdminPanel,{user,onSelectAsm:saSelectAsm,onLogout:handleLogout}))));
   }
 
-  return h('div',{className:'app-shell',style:{display:'flex',flexDirection:'column'}},
-    h('div',{style:{flex:1,overflowY:'auto'}},
-      user&&user.role==='superadmin'&&h('div',{onClick:()=>{setSaMode(true);setPage('dashboard');},style:{background:C.danger+'0A',padding:'8px 14px',display:'flex',alignItems:'center',gap:6,cursor:'pointer',borderBottom:'1px solid '+C.danger+'22'}},h('span',{style:{fontSize:13}},'←'),h('span',{style:{fontSize:12,color:C.danger,fontWeight:600}},'Retour au panneau Super Admin'),asm&&h('span',{style:{fontSize:10,color:C.muted,marginLeft:'auto'}},asm.nom)),
-      page==='dashboard' && h(Dashboard,{arts,mvts,asm,user,setPage,demandes}),
-      page==='stock' && h(StockPage,{arts,onArt:setModal,asmId:asm&&asm.id,user,onRefresh:refresh}),
-      page==='mouvement' && h(MouvementPage,{arts,mvts,asmId:asm.id,user,onRefresh:refresh,arrivages,membres}),
-      page==='inventaire' && h(InventairePage,{arts,mvts,asm}),
-      page==='commandes' && h(CommandesPage,{arts,mvts,demandes,asmId:asm.id,asm,user,onRefresh:refresh}),
-      page==='demandes' && h(DemandesPage,{arts,demandes,asmId:asm.id,onRefresh:refresh}),
-      page==='settings' && h(SettingsPage,{asm,user,membres,arts,asmId:asm.id,onRefresh:refresh,onLogout:handleLogout})),
-    h(Nav,{page,setPage,alertCount:alerts.length}),
+  return h('div',{className:'app-shell'},
+    h(Nav,{page,setPage,alertCount:alerts.length,asm,user}),
+    h('div',{className:'app-content'},
+      user&&user.role==='superadmin'&&h('div',{onClick:()=>{setSaMode(true);setPage('dashboard');},style:{background:C.danger+'08',padding:'10px 20px',display:'flex',alignItems:'center',gap:8,cursor:'pointer',borderBottom:'1px solid '+C.danger+'22'}},h('span',{style:{fontSize:14}},'←'),h('span',{style:{fontSize:13,color:C.danger,fontWeight:600}},'Retour Super Admin'),asm&&h('span',{style:{fontSize:11,color:C.muted,marginLeft:'auto'}},asm.nom)),
+      h('div',{className:'page-wrap'},
+        page==='dashboard' && h(Dashboard,{arts,mvts,asm,user,setPage,demandes}),
+        page==='stock' && h(StockPage,{arts,onArt:setModal,asmId:asm&&asm.id,user,onRefresh:refresh}),
+        page==='mouvement' && h(MouvementPage,{arts,mvts,asmId:asm.id,user,onRefresh:refresh,arrivages,membres}),
+        page==='inventaire' && h(InventairePage,{arts,mvts,asm}),
+        page==='commandes' && h(CommandesPage,{arts,mvts,demandes,asmId:asm.id,asm,user,onRefresh:refresh}),
+        page==='demandes' && h(DemandesPage,{arts,demandes,asmId:asm.id,onRefresh:refresh}),
+        page==='settings' && h(SettingsPage,{asm,user,membres,arts,asmId:asm.id,onRefresh:refresh,onLogout:handleLogout}))),
     modal && h(ModalArticle,{art:modal,user,mvts,onClose:()=>setModal(null),onRefresh:refresh})
   );
 }

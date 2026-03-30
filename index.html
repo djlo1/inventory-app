@@ -18,6 +18,10 @@ input,select,button,textarea{font-family:'Outfit',system-ui,sans-serif}
 ::-webkit-scrollbar{width:0}
 input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 .app-shell{max-width:430px;margin:0 auto;min-height:100vh;background:#F5F3EE;position:relative}
+button{transition:transform .1s ease,box-shadow .15s ease}
+button:active{transform:scale(0.97)}
+.fade-in{animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @media(min-width:768px){
   body{background:#E8E5DF}
   .app-shell{max-width:800px;border-left:1px solid #D8D5CF;border-right:1px solid #D8D5CF;box-shadow:0 0 40px rgba(0,0,0,.06)}
@@ -26,6 +30,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
   .app-shell{max-width:1000px}
 }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 <div id="app"></div>
@@ -50,7 +55,7 @@ const h = React.createElement;
 // CONSTANTS
 // ═══════════════════════════════════════
 const C = {navy:'#1B2D4F', gold:'#C8941A', bg:'#F5F3EE', ok:'#2A9D5C', warn:'#E07B39', danger:'#C0392B', muted:'#8A8A9A', text:'#1C1C2E', border:'#E8E5DF'};
-const CATS = ['Bibles','Livres','Brochures','Tracts','Cartes','Revues','Matériel'];
+const CATS = ['Bibles','Livres','Brochures','Tracts','Cartes','Revues','Cahiers','Formulaires','Matériel'];
 const LANGUES = ['Français','Fon','Mina','Yoruba','Anglais','Espagnol','Portugais'];
 const ROLES = [
   {id:'prepose', label:'Préposé aux publications', p:['stock','mouvement','inventaire','mod_stock','ajout_art','membres','acces']},
@@ -128,7 +133,12 @@ const DEFAULT_ARTICLES = [
   {code:'3522',nom:'Kit de réparation — visserie',sym:'ldcrtrkt',cat:'Matériel',stock:0,min_stock:1},
   {code:'3523',nom:'Roues pour présentoir mobile',sym:'ldcrtwhl',cat:'Matériel',stock:0,min_stock:1},
   {code:'88532',nom:'Affiche aimantée — cours présentiel',sym:'mvpfbc1',cat:'Matériel',stock:0,min_stock:1},
-  {code:'88533',nom:'Affiche aimantée — visioconférence',sym:'mvpfbc2',cat:'Matériel',stock:0,min_stock:1}
+  {code:'88533',nom:'Affiche aimantée — visioconférence',sym:'mvpfbc2',cat:'Matériel',stock:0,min_stock:1},
+  {code:'S-12',nom:'Rapport activité (S-12)',sym:'S-12',cat:'Formulaires',stock:0,min_stock:5},
+  {code:'S-13',nom:'Rapport assemblée (S-13)',sym:'S-13',cat:'Formulaires',stock:0,min_stock:2},
+  {code:'S-28',nom:'Inventaire publications (S-28)',sym:'S-28',cat:'Formulaires',stock:0,min_stock:2},
+  {code:'S-56',nom:'Demande de publications (S-56)',sym:'S-56',cat:'Formulaires',stock:0,min_stock:2},
+  {code:'S-140',nom:'Assignation (S-140)',sym:'S-140',cat:'Formulaires',stock:0,min_stock:5}
 ];
 
 // ═══════════════════════════════════════
@@ -207,7 +217,7 @@ const db = {
     await sb.from('articles').update(fields).eq('id', id);
   },
   async insertDefaultArticles(assemblee_id) {
-    const rows = DEFAULT_ARTICLES.map(a => ({...a, assemblee_id}));
+    const rows = DEFAULT_ARTICLES.map(a => ({...a, periodique: a.cat==='Revues'||a.cat==='Cahiers', assemblee_id}));
     await sb.from('articles').insert(rows);
   },
 
@@ -268,6 +278,14 @@ const db = {
   },
 
   // Demandes
+  async getArrivages(assemblee_id) {
+    const {data} = await sb.from('arrivages').select('*').eq('assemblee_id', assemblee_id).order('created_at',{ascending:false}).limit(50);
+    return data || [];
+  },
+  async createArrivage(a) {
+    const {data,error} = await sb.from('arrivages').insert([a]).select().single();
+    if(error) throw error; return data;
+  },
   async getDemandes(assemblee_id) {
     try {
       const {data} = await sb.from('demandes').select('*').eq('assemblee_id', assemblee_id).order('created_at',{ascending:false});
@@ -339,8 +357,8 @@ function ArtCard({art,onClick}) {
       h('div',{style:{fontSize:13,fontWeight:500,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},art.nom),
       h('div',{style:{fontSize:11,color:C.muted,marginTop:1}},art.sym)),
     h('div',{style:{textAlign:'right',display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3}},
-      h('div',{style:{fontSize:20,fontWeight:700,color:c,lineHeight:1}},art.stock),
-      h(Badge,{s}))
+      h('div',{style:{fontSize:20,fontWeight:700,color:art.archived?C.muted:c,lineHeight:1}},art.stock),
+      art.archived?h('span',{style:{fontSize:9,padding:'2px 6px',borderRadius:10,background:'#E8E5DF',color:C.muted}},'Archivé'):h(Badge,{s}))
   );
 }
 
@@ -964,8 +982,8 @@ function AnalyticsPanel({arts, mvts, demandes}) {
 }
 
 function Dashboard({arts,mvts,asm,user,setPage,demandes}) {
-  const alerts = arts.filter(a => getSt(a) !== 'ok');
-  const tot = arts.reduce((s,a) => s+a.stock, 0);
+  const alerts = arts.filter(a => !a.archived && getSt(a) !== 'ok');
+  const tot = arts.filter(a=>!a.archived).reduce((s,a) => s+a.stock, 0);
   const mm = mvts.filter(m => mKey(m.date) === nowM());
   const sortM = mm.filter(m => m.type==='sortie').reduce((s,m) => s+m.quantite, 0);
   const entM = mm.filter(m => m.type==='entree').reduce((s,m) => s+m.quantite, 0);
@@ -1039,11 +1057,70 @@ function Dashboard({arts,mvts,asm,user,setPage,demandes}) {
 // ═══════════════════════════════════════
 // STOCK
 // ═══════════════════════════════════════
-function StockPage({arts,onArt}) {
+function StockPage({arts,onArt,asmId,user,onRefresh}) {
   const [cat,setCat] = useState('Bibles');
   const [q,setQ] = useState('');
-  const filtered = arts.filter(a => q ? (a.nom.toLowerCase().includes(q.toLowerCase()) || a.code.includes(q) || (a.sym||'').toLowerCase().includes(q.toLowerCase())) : a.cat===cat);
-  const alertCnt = (c) => arts.filter(a => a.cat===c && getSt(a)!=='ok').length;
+  const [showArchived,setShowArchived] = useState(false);
+  const [showNewIssue,setShowNewIssue] = useState(false);
+  const [newIssue,setNewIssue] = useState({nom:'',numero:'',code:'',sym:'',stock:'0',min_stock:'5'});
+  const [busy,setBusy] = useState(false);
+
+  const isPeriodic = cat==='Revues'||cat==='Cahiers';
+  const visibleArts = arts.filter(a => {
+    if(!showArchived && a.archived) return false;
+    if(q) return (a.nom||'').toLowerCase().includes(q.toLowerCase())||(a.code||'').includes(q)||(a.sym||'').toLowerCase().includes(q.toLowerCase());
+    return a.cat===cat;
+  });
+  const alertCnt = (c) => arts.filter(a => a.cat===c && !a.archived && getSt(a)!=='ok').length;
+
+  const archiveArt = async (art) => {
+    if(busy) return;
+    if(art.stock > 0) {
+      const destroy = confirm('Le stock de "'+art.nom+'" est de '+art.stock+'.\n\nVoulez-vous marquer ces exemplaires comme "à détruire" ?\n\nOK = Oui, à détruire\nAnnuler = Non, garder le stock');
+      setBusy(true);
+      await db.updateArticle(art.id, {archived:true, destroy_note: destroy ? 'À détruire ('+art.stock+' ex.)' : 'Conservé'});
+    } else {
+      setBusy(true);
+      await db.updateArticle(art.id, {archived:true, destroy_note:'Stock vide'});
+    }
+    await onRefresh();
+    setBusy(false);
+  };
+
+  const unarchiveArt = async (art) => {
+    if(busy) return; setBusy(true);
+    await db.updateArticle(art.id, {archived:false, destroy_note:''});
+    await onRefresh(); setBusy(false);
+  };
+
+  const addNewIssue = async () => {
+    if(!newIssue.nom || !asmId || busy) return;
+    setBusy(true);
+    try {
+      await sb.from('articles').insert([{
+        assemblee_id: asmId, code: newIssue.code||'', nom: newIssue.nom,
+        sym: newIssue.sym||'', cat: cat, stock: parseInt(newIssue.stock)||0,
+        min_stock: parseInt(newIssue.min_stock)||5, periodique: true, numero: newIssue.numero||''
+      }]);
+      setNewIssue({nom:'',numero:'',code:'',sym:'',stock:'0',min_stock:'5'});
+      setShowNewIssue(false);
+      await onRefresh();
+    } catch(e) { alert('Erreur: '+e.message); }
+    setBusy(false);
+  };
+
+  // Auto-archive periodic articles with 0 stock (check once)
+  useEffect(() => {
+    if(!asmId) return;
+    const autoArchive = async () => {
+      const periodic = arts.filter(a => (a.cat==='Revues'||a.cat==='Cahiers') && a.periodique && !a.archived && a.stock===0);
+      for(const a of periodic) {
+        await db.updateArticle(a.id, {archived:true, destroy_note:'Auto-archivé (stock vide)'});
+      }
+      if(periodic.length > 0) await onRefresh();
+    };
+    autoArchive();
+  }, [arts.length]);
 
   return h('div',null,
     h('div',{style:{padding:'14px 14px 8px',background:C.bg,position:'sticky',top:0,zIndex:10}},
@@ -1055,101 +1132,291 @@ function StockPage({arts,onArt}) {
       !q && h('div',{style:{display:'flex',gap:5,overflowX:'auto',paddingBottom:2}},
         ...CATS.map(c => {
           const al = alertCnt(c);
-          return h('button',{key:c,onClick:()=>setCat(c),style:{padding:'5px 11px',borderRadius:20,fontSize:11,fontWeight:500,whiteSpace:'nowrap',cursor:'pointer',background:cat===c?C.navy:'#fff',color:cat===c?'#fff':C.text,border:cat===c?'none':'1px solid '+C.border,position:'relative'}},
+          return h('button',{key:c,onClick:()=>{setCat(c);setShowArchived(false);setShowNewIssue(false);},style:{padding:'5px 11px',borderRadius:20,fontSize:11,fontWeight:500,whiteSpace:'nowrap',cursor:'pointer',background:cat===c?C.navy:'#fff',color:cat===c?'#fff':C.text,border:cat===c?'none':'1px solid '+C.border,position:'relative'}},
             c, al>0 && h('span',{style:{position:'absolute',top:-4,right:-4,width:13,height:13,background:C.danger,borderRadius:'50%',fontSize:8,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}},al));
-        }))),
+        })),
+
+      !q && isPeriodic && h('div',{style:{display:'flex',gap:6,marginTop:8}},
+        h('button',{onClick:()=>setShowNewIssue(!showNewIssue),style:{flex:1,padding:'7px',borderRadius:8,background:showNewIssue?C.gold:C.gold+'18',color:showNewIssue?'#fff':C.gold,fontSize:11,fontWeight:600,cursor:'pointer',border:'none'}},'+ Nouveau numéro'),
+        h('button',{onClick:()=>setShowArchived(!showArchived),style:{padding:'7px 10px',borderRadius:8,background:showArchived?C.muted+'22':'transparent',color:C.muted,fontSize:11,fontWeight:500,cursor:'pointer',border:'1px solid '+C.border}},showArchived?'Masquer archivés':'Voir archivés ('+arts.filter(a=>a.cat===cat&&a.archived).length+')'))),
+
+    !q && isPeriodic && showNewIssue && h('div',{style:{margin:'0 14px 8px',background:'#fff',borderRadius:10,padding:'12px',border:'1px solid '+C.gold+'33'}},
+      h('div',{style:{fontSize:12,fontWeight:600,color:C.gold,marginBottom:8}},'Ajouter un nouveau numéro — '+cat),
+      h('div',{style:{display:'flex',gap:6,marginBottom:6}},
+        h('div',{style:{flex:1}},h(Inp,{label:'NOM *',value:newIssue.nom,onChange:v=>setNewIssue({...newIssue,nom:v}),placeholder:cat==='Revues'?'Tour de Garde — Janvier 2025':'VCM — Janvier 2025'})),
+        h('div',{style:{flex:0.5}},h(Inp,{label:'N° / PÉRIODE',value:newIssue.numero,onChange:v=>setNewIssue({...newIssue,numero:v}),placeholder:'No.1 2025'}))),
+      h('div',{style:{display:'flex',gap:6,marginBottom:6}},
+        h('div',{style:{flex:1}},h(Inp,{label:'CODE',value:newIssue.code,onChange:v=>setNewIssue({...newIssue,code:v})})),
+        h('div',{style:{flex:1}},h(Inp,{label:'SYMBOLE',value:newIssue.sym,onChange:v=>setNewIssue({...newIssue,sym:v})})),
+        h('div',{style:{flex:0.5}},h(Inp,{label:'STOCK',value:newIssue.stock,onChange:v=>setNewIssue({...newIssue,stock:v})}))),
+      h('button',{onClick:addNewIssue,disabled:!newIssue.nom||busy,style:{width:'100%',padding:'10px',borderRadius:8,background:newIssue.nom?C.ok:'#E8E5DF',color:newIssue.nom?'#fff':C.muted,fontSize:12,fontWeight:600,cursor:'pointer',border:'none'}},busy?'Ajout...':'Ajouter le numéro')),
+
     h('div',{style:{padding:'6px 14px 20px'}},
-      q && h('div',{style:{fontSize:11,color:C.muted,marginBottom:6}},filtered.length+' résultat(s)'),
-      filtered.length===0 && h('div',{style:{textAlign:'center',padding:'30px',color:C.muted,fontSize:13}},'Aucune publication trouvée'),
-      ...filtered.map(a => h(ArtCard,{key:a.id,art:a,onClick:onArt})))
+      q && h('div',{style:{fontSize:11,color:C.muted,marginBottom:6}},visibleArts.length+' résultat(s)'),
+      visibleArts.length===0 && h('div',{style:{textAlign:'center',padding:'30px',color:C.muted,fontSize:13}},showArchived?'Aucun article archivé':'Aucune publication trouvée'),
+      ...visibleArts.map(a => h('div',{key:a.id,style:{position:'relative'}},
+        h(ArtCard,{art:a,onClick:onArt}),
+        a.archived && h('div',{style:{position:'absolute',top:4,right:4,display:'flex',gap:4}},
+          h('span',{style:{background:'#E8E5DF',borderRadius:4,padding:'2px 6px',fontSize:9,color:C.muted}},'Archivé'),
+          h('button',{onClick:(e)=>{e.stopPropagation();unarchiveArt(a);},style:{background:C.ok+'22',borderRadius:4,padding:'2px 6px',fontSize:9,color:C.ok,border:'none',cursor:'pointer'}},'Restaurer')),
+        !a.archived && isPeriodic && a.periodique && h('button',{onClick:(e)=>{e.stopPropagation();archiveArt(a);},style:{position:'absolute',top:4,right:4,background:C.muted+'22',borderRadius:4,padding:'2px 6px',fontSize:9,color:C.muted,border:'none',cursor:'pointer'}},'Archiver'))))
   );
 }
 
 // ═══════════════════════════════════════
 // MOUVEMENT
 // ═══════════════════════════════════════
-function MouvementPage({arts,mvts,asmId,user,onRefresh}) {
-  const [type,setType] = useState('sortie');
-  const [q,setQ] = useState('');
-  const [sel,setSel] = useState(null);
-  const [qty,setQty] = useState(1);
-  const [per,setPer] = useState('');
-  const [langue,setLangue] = useState('Français');
-  const [dt,setDt] = useState(toDay());
+function MouvementPage({arts,mvts,asmId,user,onRefresh,arrivages,membres}) {
+  const [mode,setMode] = useState('sortie');
   const [busy,setBusy] = useState(false);
-  const [ok,setOk] = useState(false);
+  const [ok,setOk] = useState('');
   const [err,setErr] = useState('');
 
-  const filt = arts.filter(a => q && (a.nom.toLowerCase().includes(q.toLowerCase()) || a.code.includes(q) || (a.sym||'').toLowerCase().includes(q.toLowerCase())));
+  // ─── Sortie rapide state ───
+  const [sortQ,setSortQ] = useState('');
+  const [sortSel,setSortSel] = useState(null);
+  const [sortQty,setSortQty] = useState(1);
+  const [sortPer,setSortPer] = useState('');
+  const [sortLang,setSortLang] = useState('Français');
+  const [sortDt,setSortDt] = useState(toDay());
 
-  const submit = async () => {
-    if (!sel || qty<1 || busy) return;
-    if (type==='sortie' && sel.stock<qty) { setErr('Stock insuffisant ('+sel.stock+' dispo)'); setTimeout(()=>setErr(''),3000); return; }
+  // ─── Arrivage state ───
+  const [packList,setPackList] = useState('');
+  const [arrivItems,setArrivItems] = useState([]);
+  const [arrivQ,setArrivQ] = useState('');
+  const [arrivDt,setArrivDt] = useState(toDay());
+  const [showExcel,setShowExcel] = useState(false);
+
+  // ─── Ajustement state ───
+  const [adjArt,setAdjArt] = useState(null);
+  const [adjQty,setAdjQty] = useState('');
+  const [adjQ,setAdjQ] = useState('');
+  const [adjReason,setAdjReason] = useState('');
+
+  const activeArts = arts.filter(a=>!a.archived);
+  const flash = (msg,isErr)=>{if(isErr){setErr(msg);setTimeout(()=>setErr(''),3000);}else{setOk(msg);setTimeout(()=>setOk(''),2500);}};
+
+  // ─── Favorites: top 12 by sortie frequency ───
+  const artFreq = {};
+  mvts.filter(m=>m.type==='sortie').forEach(m=>{artFreq[m.article_id]=(artFreq[m.article_id]||0)+1;});
+  const favArts = Object.entries(artFreq).sort((a,b)=>b[1]-a[1]).slice(0,12).map(e=>activeArts.find(a=>a.id===e[0])).filter(Boolean);
+
+  const filtSort = sortQ ? activeArts.filter(a=>(a.nom||'').toLowerCase().includes(sortQ.toLowerCase())||(a.code||'').includes(sortQ)||(a.sym||'').toLowerCase().includes(sortQ.toLowerCase())).slice(0,8) : [];
+  const filtArriv = arrivQ ? activeArts.filter(a=>(a.nom||'').toLowerCase().includes(arrivQ.toLowerCase())||(a.code||'').includes(arrivQ)||(a.sym||'').toLowerCase().includes(arrivQ.toLowerCase())).slice(0,6) : [];
+  const filtAdj = adjQ ? activeArts.filter(a=>(a.nom||'').toLowerCase().includes(adjQ.toLowerCase())||(a.code||'').includes(adjQ)||(a.sym||'').toLowerCase().includes(adjQ.toLowerCase())).slice(0,6) : [];
+
+  // ─── Submit sortie ───
+  const submitSortie = async (art, qty) => {
+    if(!art||qty<1||busy)return;
+    if(art.stock<qty){flash('Stock insuffisant ('+art.stock+' dispo)',true);return;}
     setBusy(true);
-    try {
-      await db.createMouvement({assemblee_id:asmId, article_id:sel.id, type, quantite:parseInt(qty), langue, personne:per, membre_id:user.id, date:dt});
-      setSel(null);setQ('');setQty(1);setPer('');setDt(toDay());
-      setOk(true); setTimeout(()=>setOk(false),2500);
+    try{
+      await db.createMouvement({assemblee_id:asmId,article_id:art.id,type:'sortie',quantite:parseInt(qty),langue:sortLang,personne:sortPer,membre_id:user.id,date:sortDt,sous_type:'sortie'});
+      setSortSel(null);setSortQ('');setSortQty(1);
+      flash('Sortie enregistrée : '+art.nom+' ×'+qty);
       await onRefresh();
-    } catch(e) { setErr('Erreur: '+(e.message||'?')); setTimeout(()=>setErr(''),3000); }
+    }catch(e){flash('Erreur: '+(e.message||'?'),true);}
     setBusy(false);
   };
 
-  const rec = mvts.slice(0,7);
-  const btn = (t,label) => h('button',{onClick:()=>setType(t),style:{flex:1,padding:'9px 8px',borderRadius:7,border:'none',cursor:'pointer',fontWeight:600,fontSize:13,background:type===t?'#fff':'transparent',color:type===t?(t==='sortie'?C.warn:C.ok):C.muted,boxShadow:type===t?'0 1px 4px rgba(0,0,0,.1)':'none'}},label);
+  // ─── Quick sortie (1-tap from favorites) ───
+  const quickSortie = (art) => {
+    setSortSel(art);setSortQty(1);
+  };
+
+  // ─── Submit arrivage batch ───
+  const submitArrivage = async () => {
+    if(!packList.trim()||arrivItems.length===0||busy)return;
+    setBusy(true);
+    try{
+      const arriv = await db.createArrivage({assemblee_id:asmId,packing_list:packList.trim(),date:arrivDt,membre_id:user.id,notes:arrivItems.length+' articles'});
+      for(const item of arrivItems){
+        await db.createMouvement({assemblee_id:asmId,article_id:item.id,type:'entree',quantite:parseInt(item.qty),langue:'Français',personne:'',membre_id:user.id,date:arrivDt,arrivage_id:arriv.id,sous_type:'arrivage'});
+      }
+      setPackList('');setArrivItems([]);
+      flash('Arrivage enregistré avec '+arrivItems.length+' articles');
+      await onRefresh();
+    }catch(e){flash('Erreur: '+(e.message||'?'),true);}
+    setBusy(false);
+  };
+
+  // ─── Submit ajustement ───
+  const submitAdj = async () => {
+    if(!adjArt||adjQty===''||busy)return;
+    const newQty = parseInt(adjQty);
+    if(isNaN(newQty)||newQty<0){flash('Quantité invalide',true);return;}
+    setBusy(true);
+    try{
+      await db.updateArticle(adjArt.id,{stock:newQty});
+      const diff = newQty - adjArt.stock;
+      if(diff!==0){
+        await db.createMouvement({assemblee_id:asmId,article_id:adjArt.id,type:diff>0?'entree':'sortie',quantite:Math.abs(diff),langue:'Français',personne:adjReason||'Ajustement',membre_id:user.id,date:toDay(),sous_type:'ajustement'});
+      }
+      flash('Stock ajusté : '+adjArt.nom+' → '+newQty);
+      setAdjArt(null);setAdjQ('');setAdjQty('');setAdjReason('');
+      await onRefresh();
+    }catch(e){flash('Erreur: '+(e.message||'?'),true);}
+    setBusy(false);
+  };
+
+  // ─── Excel import ───
+  const handleExcel = (e) => {
+    const file = e.target.files[0]; if(!file)return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try{
+        const wb = XLSX.read(ev.target.result,{type:'binary'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws);
+        const items = [];
+        rows.forEach(r => {
+          const code = String(r['Code']||r['code']||'').trim();
+          const qty = parseInt(r['Quantité']||r['quantite']||r['Quantite']||r['qty']||0);
+          if(code && qty > 0){
+            const art = activeArts.find(a=>a.code===code);
+            if(art) items.push({...art,qty});
+          }
+        });
+        if(items.length>0){setArrivItems(prev=>[...prev,...items]);flash(items.length+' articles importés');}
+        else flash('Aucun article correspondant trouvé',true);
+      }catch(ex){flash('Erreur lecture Excel',true);}
+    };
+    reader.readAsBinaryString(file);
+    e.target.value='';
+  };
+
+  const downloadTemplate = () => {
+    const data = [['Code','Nom','Quantité']];
+    activeArts.slice(0,5).forEach(a=>data.push([a.code,a.nom,0]));
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols']=[{wch:10},{wch:40},{wch:12}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'Arrivage');
+    XLSX.writeFile(wb,'modele_arrivage.xlsx');
+  };
+
+  const rec = mvts.slice(0,5);
+  const mTab = (id,label,icon) => h('button',{key:id,onClick:()=>setMode(id),style:{flex:1,padding:'8px 4px',borderRadius:7,border:'none',cursor:'pointer',fontWeight:600,fontSize:11,background:mode===id?'#fff':'transparent',color:mode===id?C.navy:C.muted,boxShadow:mode===id?'0 1px 4px rgba(0,0,0,.1)':'none',display:'flex',alignItems:'center',justifyContent:'center',gap:4}},h('span',{style:{fontSize:14}},icon),label);
 
   return h('div',{style:{padding:'14px'}},
-    h('div',{style:{fontSize:18,fontWeight:700,color:C.navy,marginBottom:14}},'Enregistrer un mouvement'),
-    ok && h('div',{style:{background:'#EEF8F2',border:'1px solid '+C.ok+'33',borderRadius:9,padding:'10px 13px',marginBottom:12,display:'flex',alignItems:'center',gap:7}},h('span',{style:{color:C.ok,fontSize:16}},'✓'),h('span',{style:{fontSize:12,color:C.ok,fontWeight:500}},'Mouvement enregistré !')),
-    err && h('div',{style:{background:'#FFF0EE',border:'1px solid '+C.danger+'33',borderRadius:9,padding:'10px 13px',marginBottom:12,display:'flex',alignItems:'center',gap:7}},h('span',{style:{color:C.danger,fontSize:16}},'⚠'),h('span',{style:{fontSize:12,color:C.danger,fontWeight:500}},err)),
-    h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:9,padding:3,marginBottom:14}},btn('sortie','↓  Sortie'),btn('entree','↑  Réception')),
+    h('div',{style:{fontSize:18,fontWeight:700,color:C.navy,marginBottom:12}},'Mouvements de stock'),
+    ok && h('div',{style:{background:'#EEF8F2',border:'1px solid '+C.ok+'33',borderRadius:9,padding:'10px 13px',marginBottom:10,display:'flex',alignItems:'center',gap:7}},h('span',{style:{color:C.ok,fontSize:16}},'✓'),h('span',{style:{fontSize:12,color:C.ok,fontWeight:500}},ok)),
+    err && h('div',{style:{background:'#FFF0EE',border:'1px solid '+C.danger+'33',borderRadius:9,padding:'10px 13px',marginBottom:10,display:'flex',alignItems:'center',gap:7}},h('span',{style:{color:C.danger,fontSize:16}},'⚠'),h('span',{style:{fontSize:12,color:C.danger,fontWeight:500}},err)),
 
-    // Article selection
-    h('div',{style:{marginBottom:12}},
-      h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:5}},'PUBLICATION'),
-      sel ? h('div',{style:{background:'#F0F4FF',border:'1px solid '+C.navy+'33',borderRadius:9,padding:'9px 12px',display:'flex',alignItems:'center',gap:8}},
-        h('div',{style:{flex:1}},h('div',{style:{fontSize:12,fontWeight:600,color:C.navy}},sel.nom),h('div',{style:{fontSize:10,color:C.muted}},sel.code+' · Stock: '+sel.stock)),
-        h('span',{onClick:()=>{setSel(null);setQ('');},style:{cursor:'pointer',color:C.muted,fontSize:16}},'✕'))
-      : h('div',null,
-        h('div',{style:{position:'relative'}},
-          h('span',{style:{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:C.muted,fontSize:13}},'🔍'),
-          h('input',{value:q,onChange:e=>setQ(e.target.value),placeholder:'Rechercher...',style:{width:'100%',padding:'9px 10px 9px 30px',borderRadius:9,border:'1px solid '+C.border,background:'#fff',fontSize:12,outline:'none'}})),
-        q && filt.length>0 && h('div',{style:{background:'#fff',border:'1px solid '+C.border,borderRadius:9,marginTop:3,maxHeight:180,overflowY:'auto'}},
-          ...filt.slice(0,5).map(a => h('div',{key:a.id,onClick:()=>{setSel(a);setQ('');},style:{padding:'9px 12px',cursor:'pointer',borderBottom:'1px solid #F5F3EE',display:'flex',alignItems:'center',gap:8}},
-            h('div',{style:{flex:1}},h('div',{style:{fontSize:12,fontWeight:500,color:C.text}},a.nom),h('div',{style:{fontSize:10,color:C.muted}},a.code+' · '+a.sym)),
-            h(Badge,{s:getSt(a)})))),
-        q && filt.length===0 && h('div',{style:{padding:'7px 4px',fontSize:11,color:C.muted}},'Aucun résultat'))),
+    h('div',{style:{display:'flex',background:'#E8E5DF',borderRadius:9,padding:3,marginBottom:14}},mTab('sortie','Sortie','↓'),mTab('arrivage','Arrivage','📦'),mTab('ajustement','Ajuster','✎')),
 
-    // Qty
-    h('div',{style:{marginBottom:12}},
-      h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:5}},'QUANTITÉ'),
-      h('div',{style:{display:'flex',alignItems:'center',gap:8}},
-        h('button',{onClick:()=>setQty(Math.max(1,qty-1)),style:{width:40,height:40,borderRadius:9,background:'#fff',border:'1px solid '+C.border,fontSize:18,cursor:'pointer'}},'−'),
-        h('input',{type:'number',value:qty,onChange:e=>setQty(Math.max(1,parseInt(e.target.value)||1)),style:{flex:1,textAlign:'center',padding:'9px',borderRadius:9,border:'1px solid '+C.border,fontSize:20,fontWeight:700,color:C.navy,outline:'none'}}),
-        h('button',{onClick:()=>setQty(qty+1),style:{width:40,height:40,borderRadius:9,background:C.navy,border:'none',fontSize:18,color:'#fff',cursor:'pointer'}},'+'))),
+    // ═══ SORTIE RAPIDE ═══
+    mode==='sortie' && h('div',null,
+      h('div',{style:{display:'flex',gap:8,marginBottom:10}},
+        h('div',{style:{flex:1}},h('select',{value:sortLang,onChange:e=>setSortLang(e.target.value),style:{width:'100%',padding:'7px 8px',borderRadius:8,border:'1px solid '+C.border,fontSize:11,outline:'none',background:'#fff'}},...LANGUES.map(l=>h('option',{key:l},l)))),
+        h('div',{style:{flex:1.5}},h('input',{value:sortPer,onChange:e=>setSortPer(e.target.value),placeholder:'Proclamateur...',style:{width:'100%',padding:'7px 8px',borderRadius:8,border:'1px solid '+C.border,fontSize:11,outline:'none'}}))),
 
-    // Date + Langue
-    h('div',{style:{display:'flex',gap:8,marginBottom:12}},
-      h('div',{style:{flex:1}},h(Inp,{label:'DATE',value:dt,onChange:v=>setDt(v),type:'date'})),
-      h('div',{style:{flex:1}},
-        h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},'LANGUE'),
-        h('select',{value:langue,onChange:e=>setLangue(e.target.value),style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}},
-          ...LANGUES.map(l=>h('option',{key:l,value:l},l))))),
+      !sortSel && favArts.length>0 && h('div',null,
+        h('div',{style:{fontSize:11,fontWeight:600,color:C.muted,marginBottom:6}},'⚡ Favoris (les plus distribués)'),
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:12}},
+          ...favArts.map(a=>{
+            const s=getSt(a);const sc=stStyle(s);
+            return h('div',{key:a.id,onClick:()=>quickSortie(a),style:{background:'#fff',borderRadius:10,padding:'8px',cursor:'pointer',border:'1px solid '+C.border,textAlign:'center',transition:'all .15s'}},
+              h('div',{style:{fontSize:10,fontWeight:600,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}},a.sym||a.code),
+              h('div',{style:{fontSize:18,fontWeight:800,color:sc.c}},a.stock),
+              h('div',{style:{fontSize:8,color:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},a.nom));
+          }))),
 
-    h(Inp,{label:'PERSONNE (optionnel)',value:per,onChange:v=>setPer(v),placeholder:'Nom du proclamateur'}),
+      !sortSel && h('div',{style:{position:'relative',marginBottom:10}},
+        h('span',{style:{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:13,color:C.muted}},'🔍'),
+        h('input',{value:sortQ,onChange:e=>setSortQ(e.target.value),placeholder:'Rechercher une publication...',style:{width:'100%',padding:'9px 10px 9px 30px',borderRadius:9,border:'1px solid '+C.border,background:'#fff',fontSize:12,outline:'none'}}),
+        sortQ && h('span',{onClick:()=>setSortQ(''),style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',cursor:'pointer',color:C.muted}},'✕')),
+      !sortSel && sortQ && filtSort.length>0 && h('div',{style:{background:'#fff',border:'1px solid '+C.border,borderRadius:9,marginTop:-6,marginBottom:10,maxHeight:200,overflowY:'auto'}},
+        ...filtSort.map(a=>h('div',{key:a.id,onClick:()=>{setSortSel(a);setSortQ('');setSortQty(1);},style:{padding:'9px 12px',cursor:'pointer',borderBottom:'1px solid #F5F3EE',display:'flex',alignItems:'center',gap:8}},
+          h('div',{style:{flex:1}},h('div',{style:{fontSize:12,fontWeight:500}},a.nom),h('div',{style:{fontSize:10,color:C.muted}},a.code+' · Stock: '+a.stock)),
+          h(Badge,{s:getSt(a)})))),
 
-    h('button',{onClick:submit,disabled:!sel||busy,style:{width:'100%',padding:'13px',borderRadius:11,background:sel?C.navy:'#E8E5DF',color:sel?'#fff':C.muted,fontSize:14,fontWeight:600,cursor:sel?'pointer':'not-allowed',border:'none',marginBottom:20}},
-      busy ? 'Enregistrement...' : (type==='sortie' ? 'Enregistrer la sortie ↓' : 'Enregistrer la réception ↑')),
+      sortSel && h('div',{style:{background:'#F0F4FF',border:'1px solid '+C.navy+'33',borderRadius:10,padding:'12px',marginBottom:12}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:10}},
+          h('div',{style:{flex:1}},h('div',{style:{fontSize:13,fontWeight:600,color:C.navy}},sortSel.nom),h('div',{style:{fontSize:10,color:C.muted}},sortSel.code+' · Stock: '+sortSel.stock)),
+          h('span',{onClick:()=>setSortSel(null),style:{cursor:'pointer',color:C.muted,fontSize:16}},'✕')),
+        h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:10}},
+          h('button',{onClick:()=>setSortQty(Math.max(1,sortQty-1)),style:{width:40,height:40,borderRadius:9,background:'#fff',border:'1px solid '+C.border,fontSize:18,cursor:'pointer'}},'−'),
+          h('input',{type:'number',value:sortQty,onChange:e=>setSortQty(Math.max(1,parseInt(e.target.value)||1)),style:{flex:1,textAlign:'center',padding:'8px',borderRadius:9,border:'1px solid '+C.border,fontSize:22,fontWeight:700,color:C.navy,outline:'none'}}),
+          h('button',{onClick:()=>setSortQty(sortQty+1),style:{width:40,height:40,borderRadius:9,background:C.navy,border:'none',fontSize:18,color:'#fff',cursor:'pointer'}},'+'),
+          h('button',{onClick:()=>setSortQty(sortQty+5),style:{width:40,height:40,borderRadius:8,background:C.gold+'22',border:'1px solid '+C.gold+'44',fontSize:11,fontWeight:700,color:C.gold,cursor:'pointer'}},'+5')),
+        h('button',{onClick:()=>submitSortie(sortSel,sortQty),disabled:busy,style:{width:'100%',padding:'12px',borderRadius:10,background:C.warn,color:'#fff',fontSize:14,fontWeight:700,cursor:'pointer',border:'none'}},busy?'...':'↓ Enregistrer la sortie ('+sortQty+')'))),
 
-    rec.length>0 && h('div',null,
-      h('div',{style:{fontSize:12,fontWeight:600,color:C.text,marginBottom:8}},'Derniers mouvements'),
-      ...rec.map(m => {
-        const art = arts.find(a=>a.id===m.article_id);
-        return h('div',{key:m.id,style:{background:'#fff',borderRadius:9,padding:'9px 12px',marginBottom:5,display:'flex',alignItems:'center',gap:8,border:'1px solid '+C.border}},
-          h('div',{style:{width:28,height:28,borderRadius:7,background:m.type==='sortie'?'#FFF4EE':'#EEF8F2',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13}},m.type==='sortie'?'↓':'↑'),
+    // ═══ ARRIVAGE ═══
+    mode==='arrivage' && h('div',null,
+      h('div',{style:{background:'#fff',borderRadius:10,padding:'12px',border:'1px solid '+C.border,marginBottom:12}},
+        h('div',{style:{fontSize:12,fontWeight:600,color:C.navy,marginBottom:8}},'📋 Informations de l\'arrivage'),
+        h('div',{style:{display:'flex',gap:8}},
+          h('div',{style:{flex:1}},h(Inp,{label:'N° PACKING LIST *',value:packList,onChange:v=>setPackList(v),placeholder:'Ex: PL-2025-042'})),
+          h('div',{style:{flex:0.6}},h(Inp,{label:'DATE',value:arrivDt,onChange:v=>setArrivDt(v),type:'date'})))),
+
+      h('div',{style:{display:'flex',gap:6,marginBottom:10}},
+        h('button',{onClick:()=>setShowExcel(!showExcel),style:{flex:1,padding:'8px',borderRadius:8,background:showExcel?C.navy:'#fff',color:showExcel?'#fff':C.navy,fontSize:11,fontWeight:600,cursor:'pointer',border:'1px solid '+C.border}},'📥 Importer Excel'),
+        h('button',{onClick:downloadTemplate,style:{flex:1,padding:'8px',borderRadius:8,background:'#fff',color:C.navy,fontSize:11,fontWeight:500,cursor:'pointer',border:'1px solid '+C.border}},'📄 Télécharger modèle')),
+
+      showExcel && h('div',{style:{background:'#FAFAF8',border:'1px solid '+C.border,borderRadius:9,padding:'12px',marginBottom:10}},
+        h('div',{style:{fontSize:11,color:C.muted,marginBottom:8}},'Importez un fichier Excel avec les colonnes : Code, Nom, Quantité'),
+        h('input',{type:'file',accept:'.xlsx,.xls,.csv',onChange:handleExcel,style:{fontSize:11}})),
+
+      h('div',{style:{fontSize:11,fontWeight:600,color:C.muted,marginBottom:6}},'Ajouter des articles manuellement'),
+      h('div',{style:{position:'relative',marginBottom:8}},
+        h('span',{style:{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:13,color:C.muted}},'🔍'),
+        h('input',{value:arrivQ,onChange:e=>setArrivQ(e.target.value),placeholder:'Rechercher un article à ajouter...',style:{width:'100%',padding:'8px 10px 8px 30px',borderRadius:9,border:'1px solid '+C.border,background:'#fff',fontSize:12,outline:'none'}})),
+      arrivQ && filtArriv.length>0 && h('div',{style:{background:'#fff',border:'1px solid '+C.border,borderRadius:9,marginTop:-4,marginBottom:8,maxHeight:160,overflowY:'auto'}},
+        ...filtArriv.map(a=>h('div',{key:a.id,onClick:()=>{setArrivItems(prev=>{const ex=prev.find(x=>x.id===a.id);if(ex){return prev.map(x=>x.id===a.id?{...x,qty:x.qty+1}:x);}return[...prev,{...a,qty:1}];});setArrivQ('');},style:{padding:'8px 12px',cursor:'pointer',borderBottom:'1px solid #F5F3EE',display:'flex',alignItems:'center',gap:8}},
+          h('div',{style:{flex:1}},h('div',{style:{fontSize:12,fontWeight:500}},a.nom),h('div',{style:{fontSize:10,color:C.muted}},a.code)),
+          h('span',{style:{color:C.ok,fontSize:16}},'+')))),
+
+      arrivItems.length>0 && h('div',{style:{marginBottom:12}},
+        h('div',{style:{fontSize:11,fontWeight:600,color:C.navy,marginBottom:6}},arrivItems.length+' article(s) dans l\'arrivage'),
+        ...arrivItems.map((item,i)=>h('div',{key:item.id+'-'+i,style:{background:'#fff',borderRadius:8,padding:'8px 10px',marginBottom:4,display:'flex',alignItems:'center',gap:8,border:'1px solid '+C.border}},
+          h('div',{style:{flex:1,minWidth:0}},h('div',{style:{fontSize:11,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},item.nom),h('div',{style:{fontSize:9,color:C.muted}},item.code)),
+          h('div',{style:{display:'flex',alignItems:'center',gap:4}},
+            h('button',{onClick:()=>setArrivItems(prev=>prev.map((x,j)=>j===i?{...x,qty:Math.max(1,x.qty-1)}:x)),style:{width:24,height:24,borderRadius:5,background:'#E8E5DF',border:'none',fontSize:12,cursor:'pointer'}},'−'),
+            h('input',{type:'number',value:item.qty,onChange:e=>setArrivItems(prev=>prev.map((x,j)=>j===i?{...x,qty:Math.max(1,parseInt(e.target.value)||1)}:x)),style:{width:40,textAlign:'center',padding:'3px',borderRadius:5,border:'1px solid '+C.border,fontSize:12,fontWeight:700,outline:'none'}}),
+            h('button',{onClick:()=>setArrivItems(prev=>prev.map((x,j)=>j===i?{...x,qty:x.qty+1}:x)),style:{width:24,height:24,borderRadius:5,background:C.navy,border:'none',fontSize:12,color:'#fff',cursor:'pointer'}},'+'),
+            h('span',{onClick:()=>setArrivItems(prev=>prev.filter((_,j)=>j!==i)),style:{cursor:'pointer',color:C.danger,fontSize:12,marginLeft:4}},'✕'))))),
+
+      h('button',{onClick:submitArrivage,disabled:!packList.trim()||arrivItems.length===0||busy,style:{width:'100%',padding:'13px',borderRadius:10,background:packList.trim()&&arrivItems.length>0?C.ok:'#E8E5DF',color:packList.trim()&&arrivItems.length>0?'#fff':C.muted,fontSize:14,fontWeight:700,cursor:'pointer',border:'none',marginBottom:12}},busy?'Enregistrement...':'📦 Enregistrer l\'arrivage ('+arrivItems.reduce((s,x)=>s+x.qty,0)+' unités)'),
+
+      arrivages&&arrivages.length>0 && h('div',null,
+        h('div',{style:{fontSize:12,fontWeight:600,color:C.text,marginBottom:6}},'Historique des arrivages'),
+        ...arrivages.slice(0,5).map(av=>h('div',{key:av.id,style:{background:'#fff',borderRadius:8,padding:'8px 12px',marginBottom:4,border:'1px solid '+C.border,display:'flex',alignItems:'center',gap:8}},
+          h('div',{style:{width:30,height:30,borderRadius:7,background:'#EEF8F2',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14}},'📦'),
+          h('div',{style:{flex:1}},h('div',{style:{fontSize:12,fontWeight:600,color:C.text}},'PL: '+av.packing_list),h('div',{style:{fontSize:10,color:C.muted}},fmtD(av.date)+' · '+av.notes)))))),
+
+    // ═══ AJUSTEMENT ═══
+    mode==='ajustement' && h('div',null,
+      h('div',{style:{background:'#FFF8E1',borderRadius:9,padding:'10px 12px',marginBottom:12,fontSize:11,color:'#8B6914'}},
+        '✎ L\'ajustement corrige le stock sans packing list. Utilisez-le pour les corrections d\'inventaire.'),
+
+      !adjArt && h('div',{style:{position:'relative',marginBottom:10}},
+        h('span',{style:{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:13,color:C.muted}},'🔍'),
+        h('input',{value:adjQ,onChange:e=>setAdjQ(e.target.value),placeholder:'Rechercher l\'article à ajuster...',style:{width:'100%',padding:'9px 10px 9px 30px',borderRadius:9,border:'1px solid '+C.border,background:'#fff',fontSize:12,outline:'none'}})),
+      !adjArt && adjQ && filtAdj.length>0 && h('div',{style:{background:'#fff',border:'1px solid '+C.border,borderRadius:9,marginTop:-6,marginBottom:10,maxHeight:180,overflowY:'auto'}},
+        ...filtAdj.map(a=>h('div',{key:a.id,onClick:()=>{setAdjArt(a);setAdjQty(String(a.stock));setAdjQ('');},style:{padding:'9px 12px',cursor:'pointer',borderBottom:'1px solid #F5F3EE',display:'flex',alignItems:'center',gap:8}},
+          h('div',{style:{flex:1}},h('div',{style:{fontSize:12,fontWeight:500}},a.nom),h('div',{style:{fontSize:10,color:C.muted}},a.code+' · Stock actuel: '+a.stock))))),
+
+      adjArt && h('div',{style:{background:'#fff',borderRadius:10,padding:'14px',border:'1px solid '+C.border}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:12}},
+          h('div',{style:{flex:1}},h('div',{style:{fontSize:13,fontWeight:600,color:C.navy}},adjArt.nom),h('div',{style:{fontSize:11,color:C.muted}},adjArt.code+' · Stock actuel: '+adjArt.stock)),
+          h('span',{onClick:()=>{setAdjArt(null);setAdjQ('');},style:{cursor:'pointer',color:C.muted,fontSize:16}},'✕')),
+        h(Inp,{label:'NOUVEAU STOCK',value:adjQty,onChange:v=>setAdjQty(v),type:'number'}),
+        h(Inp,{label:'MOTIF (optionnel)',value:adjReason,onChange:v=>setAdjReason(v),placeholder:'Ex: correction inventaire'}),
+        adjQty!=='' && parseInt(adjQty)!==adjArt.stock && h('div',{style:{fontSize:11,color:parseInt(adjQty)>adjArt.stock?C.ok:C.warn,fontWeight:600,marginBottom:8}},
+          'Différence : '+(parseInt(adjQty)-adjArt.stock>0?'+':'')+(parseInt(adjQty)-adjArt.stock)),
+        h('button',{onClick:submitAdj,disabled:adjQty===''||busy,style:{width:'100%',padding:'12px',borderRadius:10,background:adjQty!==''?C.navy:'#E8E5DF',color:adjQty!==''?'#fff':C.muted,fontSize:13,fontWeight:600,cursor:'pointer',border:'none'}},busy?'...':'✎ Enregistrer l\'ajustement'))),
+
+    // ─── Recent ───
+    rec.length>0 && h('div',{style:{marginTop:16}},
+      h('div',{style:{fontSize:12,fontWeight:600,color:C.text,marginBottom:6}},'Derniers mouvements'),
+      ...rec.map(m=>{
+        const art=arts.find(a=>a.id===m.article_id);
+        return h('div',{key:m.id,style:{background:'#fff',borderRadius:9,padding:'8px 12px',marginBottom:4,display:'flex',alignItems:'center',gap:8,border:'1px solid '+C.border}},
+          h('div',{style:{width:26,height:26,borderRadius:6,background:m.type==='sortie'?'#FFF4EE':'#EEF8F2',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12}},m.type==='sortie'?'↓':'↑'),
           h('div',{style:{flex:1,minWidth:0}},
-            h('div',{style:{fontSize:12,fontWeight:500,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},art?art.nom:'?'),
-            h('div',{style:{fontSize:10,color:C.muted}},fmtD(m.date)+(m.personne?' · '+m.personne:''))),
+            h('div',{style:{fontSize:11,fontWeight:500,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},art?art.nom:'?'),
+            h('div',{style:{fontSize:9,color:C.muted}},fmtD(m.date)+(m.personne?' · '+m.personne:'')+(m.sous_type?' · '+m.sous_type:''))),
           h('span',{style:{fontSize:13,fontWeight:700,color:m.type==='sortie'?C.warn:C.ok}},(m.type==='sortie'?'-':'+')+m.quantite));
       }))
   );
@@ -1164,7 +1431,7 @@ function InventairePage({arts,mvts,asm}) {
   const mMvts = mvts.filter(m => mKey(m.date)===month);
   const isCur = month===nowM();
   const cats = ['Tous',...CATS];
-  const rows = arts.filter(a => fcat==='Tous'||a.cat===fcat).map(a => {
+  const rows = arts.filter(a => !a.archived && (fcat==='Tous'||a.cat===fcat)).map(a => {
     const ent = mMvts.filter(m=>m.type==='entree'&&m.article_id===a.id).reduce((s,m)=>s+m.quantite,0);
     const sort = mMvts.filter(m=>m.type==='sortie'&&m.article_id===a.id).reduce((s,m)=>s+m.quantite,0);
     return {...a,ent,sort,act:isCur?a.stock:null,ini:isCur?(a.stock-ent+sort):null,has:ent>0||sort>0||a.stock>0};
@@ -1456,7 +1723,7 @@ function CommandesPage({arts, mvts, demandes, asmId, asm, user, onRefresh}) {
 
   const generate = () => {
     const suggestions = [];
-    arts.forEach(a => {
+    arts.filter(a=>!a.archived).forEach(a => {
       if (a.min_stock === 0) return;
       const moisMvts = mvts.filter(m => m.article_id===a.id && m.type==='sortie' && mKey(m.date)===nowM());
       const sortiesMois = moisMvts.reduce((s,m) => s+m.quantite, 0);
@@ -1891,7 +2158,7 @@ function ModalArticle({art,user,mvts,onClose,onRefresh}) {
 // ═══════════════════════════════════════
 function Nav({page,setPage,alertCount}) {
   const items = [{id:'dashboard',icon:'⌂',label:'Accueil'},{id:'stock',icon:'▣',label:'Stock'},{id:'mouvement',icon:'⇅',label:'Mouv.'},{id:'commandes',icon:'▦',label:'Cmd.'},{id:'demandes',icon:'☆',label:'Spécial'},{id:'inventaire',icon:'▤',label:'Invent.'},{id:'settings',icon:'⚙',label:'Régl.'}];
-  return h('div',{style:{position:'sticky',bottom:0,background:'#fff',borderTop:'1px solid '+C.border,display:'flex',padding:'7px 0 10px',zIndex:50}},
+  return h('div',{style:{position:'sticky',bottom:0,background:'#fff',borderTop:'1px solid '+C.border,boxShadow:'0 -2px 12px rgba(0,0,0,.06)',display:'flex',padding:'7px 0 10px',zIndex:50}},
     ...items.map(({id,icon,label}) => {
       const active = page===id;
       const badge = id==='stock' && alertCount>0;
@@ -1916,19 +2183,21 @@ function App() {
   const [mvts,setMvts] = useState([]);
   const [modal,setModal] = useState(null);
   const [demandes,setDemandes] = useState([]);
+  const [arrivages,setArrivages] = useState([]);
   const [saMode,setSaMode] = useState(false);
 
   const loadData = useCallback(async (asmId) => {
     try {
-      const [a, m, ar, mv, dm] = await Promise.all([
+      const [a, m, ar, mv, dm, av] = await Promise.all([
         sb.from('assemblees').select('*').eq('id',asmId).single(),
         db.getMembres(asmId),
         db.getArticles(asmId),
         db.getMouvements(asmId, 200),
-        db.getDemandes(asmId)
+        db.getDemandes(asmId),
+        db.getArrivages(asmId)
       ]);
       if (a.data) setAsm(a.data);
-      setMembres(m||[]); setArts(ar||[]); setMvts(mv||[]); setDemandes(dm||[]);
+      setMembres(m||[]); setArts(ar||[]); setMvts(mv||[]); setDemandes(dm||[]); setArrivages(av||[]);
     } catch(e) { console.error('loadData error:', e); }
   }, []);
 
@@ -1981,7 +2250,7 @@ function App() {
     setScreen('auth');
   };
 
-  const alerts = arts.filter(a => getSt(a) !== 'ok');
+  const alerts = arts.filter(a => !a.archived && getSt(a) !== 'ok');
 
   if (screen === 'loading') {
     return h('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:C.bg}},
@@ -2009,8 +2278,8 @@ function App() {
     h('div',{style:{flex:1,overflowY:'auto'}},
       user&&user.role==='superadmin'&&h('div',{onClick:()=>{setSaMode(true);setPage('dashboard');},style:{background:C.danger+'0A',padding:'8px 14px',display:'flex',alignItems:'center',gap:6,cursor:'pointer',borderBottom:'1px solid '+C.danger+'22'}},h('span',{style:{fontSize:13}},'←'),h('span',{style:{fontSize:12,color:C.danger,fontWeight:600}},'Retour au panneau Super Admin'),asm&&h('span',{style:{fontSize:10,color:C.muted,marginLeft:'auto'}},asm.nom)),
       page==='dashboard' && h(Dashboard,{arts,mvts,asm,user,setPage,demandes}),
-      page==='stock' && h(StockPage,{arts,onArt:setModal}),
-      page==='mouvement' && h(MouvementPage,{arts,mvts,asmId:asm.id,user,onRefresh:refresh}),
+      page==='stock' && h(StockPage,{arts,onArt:setModal,asmId:asm&&asm.id,user,onRefresh:refresh}),
+      page==='mouvement' && h(MouvementPage,{arts,mvts,asmId:asm.id,user,onRefresh:refresh,arrivages,membres}),
       page==='inventaire' && h(InventairePage,{arts,mvts,asm}),
       page==='commandes' && h(CommandesPage,{arts,mvts,demandes,asmId:asm.id,asm,user,onRefresh:refresh}),
       page==='demandes' && h(DemandesPage,{arts,demandes,asmId:asm.id,onRefresh:refresh}),

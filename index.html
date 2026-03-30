@@ -13,41 +13,62 @@
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--sidebar:240px;--nav-h:60px;--radius:14px;--shadow:0 2px 12px rgba(27,45,79,.06)}
-body{font-family:'Outfit',system-ui,-apple-system,sans-serif;background:#EDEAE4;color:#1C1C2E;-webkit-font-smoothing:antialiased}
-input,select,button,textarea{font-family:'Outfit',system-ui,sans-serif}
+:root{
+  --navy:#1B2D4F;--navy-light:#243B5C;--gold:#C8941A;--gold-soft:#FFF8E8;
+  --bg:#F7F6F3;--bg2:#EFEDE8;--card:#FFFFFF;
+  --ok:#22A55B;--ok-bg:#EEFBF3;--warn:#E07B39;--warn-bg:#FFF5EE;--danger:#D63939;--danger-bg:#FEF0F0;
+  --muted:#8B8D97;--text:#1A1D26;--border:#E4E2DD;
+  --radius:12px;--radius-lg:16px;--shadow-sm:0 1px 3px rgba(0,0,0,.04);--shadow:0 2px 12px rgba(0,0,0,.06);--shadow-lg:0 8px 30px rgba(0,0,0,.08);
+  --sidebar-w:250px;--nav-h:62px;
+  --font:'Outfit',system-ui,-apple-system,sans-serif;
+}
+html{height:100%}
+body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;min-height:100%;line-height:1.5}
+input,select,button,textarea{font-family:var(--font)}
 ::-webkit-scrollbar{width:5px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:#C8C4BB;border-radius:10px}
 input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
-button{transition:transform .08s ease,box-shadow .15s ease,background .15s ease}
+button{transition:transform .08s ease,box-shadow .12s ease,background .15s ease;cursor:pointer}
 button:active{transform:scale(0.97)}
-.fade-in{animation:fadeIn .3s ease}
-@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-@keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+a{text-decoration:none;color:inherit}
+.fade-in{animation:fadeIn .25s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 
-/* ─── Mobile first ─── */
-.app-shell{min-height:100vh;background:#F5F3EE;display:flex;flex-direction:column}
+/* ─── Layout: Mobile first (full width) ─── */
+.app-shell{display:flex;flex-direction:column;min-height:100vh;width:100%;background:var(--bg)}
 .app-sidebar{display:none}
-.app-content{flex:1;overflow-y:auto;padding-bottom:var(--nav-h)}
+.app-content{flex:1;overflow-y:auto;padding-bottom:var(--nav-h);-webkit-overflow-scrolling:touch}
 .app-bnav{position:fixed;bottom:0;left:0;right:0;z-index:50}
-.page-wrap{padding:16px 16px 24px;max-width:720px;margin:0 auto;width:100%}
+.page-wrap{padding:16px 16px 28px;width:100%;max-width:800px;margin:0 auto}
+.page-head{margin-bottom:20px}
+.page-head h1{font-size:22px;font-weight:800;color:var(--navy);letter-spacing:-.02em}
+.page-head p{font-size:13px;color:var(--muted);margin-top:2px}
 
-/* ─── Tablet ─── */
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow-sm)}
+.card:hover{box-shadow:var(--shadow)}
+
+/* ─── Tablet (≥768px): Sidebar layout ─── */
 @media(min-width:768px){
-  body{background:#E5E2DC}
-  .app-shell{flex-direction:row;max-width:1200px;margin:0 auto;min-height:100vh;border-radius:0;box-shadow:0 0 60px rgba(0,0,0,.08)}
-  .app-sidebar{display:flex;flex-direction:column;width:var(--sidebar);min-height:100vh;background:#fff;border-right:1px solid #E8E5DF;position:sticky;top:0;flex-shrink:0;z-index:40}
+  body{background:var(--bg2)}
+  .app-shell{flex-direction:row;width:100%}
+  .app-sidebar{display:flex;flex-direction:column;width:var(--sidebar-w);min-height:100vh;background:var(--card);border-right:1px solid var(--border);position:sticky;top:0;flex-shrink:0;z-index:40;box-shadow:2px 0 12px rgba(0,0,0,.03)}
   .app-content{padding-bottom:0;min-height:100vh}
   .app-bnav{display:none}
-  .page-wrap{padding:24px 28px 32px;max-width:840px}
+  .page-wrap{padding:28px 32px 40px;max-width:880px}
 }
 
-/* ─── Desktop ─── */
+/* ─── Desktop (≥1200px) ─── */
 @media(min-width:1200px){
-  .app-shell{max-width:1400px;border-left:1px solid #D8D5CF;border-right:1px solid #D8D5CF}
-  .app-sidebar{width:260px}
-  .page-wrap{padding:28px 36px 40px;max-width:960px}
+  .app-sidebar{width:270px}
+  .page-wrap{padding:32px 40px 48px;max-width:1000px}
+}
+
+/* ─── Large (≥1440px) ─── */
+@media(min-width:1440px){
+  .page-wrap{max-width:1100px}
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -74,7 +95,7 @@ const h = React.createElement;
 // ═══════════════════════════════════════
 // CONSTANTS
 // ═══════════════════════════════════════
-const C = {navy:'#1B2D4F', gold:'#C8941A', bg:'#F5F3EE', ok:'#2A9D5C', warn:'#E07B39', danger:'#C0392B', muted:'#8A8A9A', text:'#1C1C2E', border:'#E8E5DF'};
+const C = {navy:'#1B2D4F', navyL:'#243B5C', gold:'#C8941A', goldSoft:'#FFF8E8', bg:'#F7F6F3', bg2:'#EFEDE8', card:'#FFFFFF', ok:'#22A55B', okBg:'#EEFBF3', warn:'#E07B39', warnBg:'#FFF5EE', danger:'#D63939', dangerBg:'#FEF0F0', muted:'#8B8D97', text:'#1A1D26', border:'#E4E2DD', radius:'12px'};
 const CATS = ['Bibles','Livres','Brochures','Tracts','Cartes','Revues','Cahiers','Formulaires','Matériel'];
 const LANGUES = ['Français','Fon','Mina','Yoruba','Anglais','Espagnol','Portugais'];
 const ROLES = [
@@ -170,7 +191,7 @@ const fmtMonth = (m) => { try { const p=m.split('-'); return new Date(+p[0],+p[1
 const mKey = (d) => d ? d.slice(0,7) : '';
 const nowM = () => mKey(toDay());
 const getSt = (a) => a.min_stock === 0 ? 'ok' : a.stock === 0 ? 'empty' : a.stock < a.min_stock ? 'low' : 'ok';
-const stStyle = (s) => ({ok:{c:C.ok,bg:'#EEF8F2'}, low:{c:C.warn,bg:'#FFF4EE'}, empty:{c:C.danger,bg:'#FFF0EE'}}[s]);
+const stStyle = (s) => ({ok:{c:C.ok,bg:C.okBg}, low:{c:C.warn,bg:C.warnBg}, empty:{c:C.danger,bg:C.dangerBg}}[s]);
 const stLabel = (s) => ({ok:'En stock', low:'Faible', empty:'Épuisé'}[s]);
 
 // ═══════════════════════════════════════
@@ -340,7 +361,7 @@ function SearchSelect({options, value, onChange, placeholder, renderOption}) {
     h('div',{onClick:()=>setOpen(!open),style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between',minHeight:38}},
       h('span',{style:{color:selected?C.text:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}},selected?selected.label:(placeholder||'Sélectionner...')),
       h('span',{style:{color:C.muted,fontSize:10,marginLeft:4}},open?'▲':'▼')),
-    open && h('div',{style:{position:'absolute',top:'100%',left:0,right:0,zIndex:60,background:'#fff',border:'1px solid '+C.border,borderRadius:8,marginTop:2,boxShadow:'0 8px 24px rgba(0,0,0,.12)',maxHeight:240,overflow:'hidden',display:'flex',flexDirection:'column'}},
+    open && h('div',{style:{position:'absolute',top:'100%',left:0,right:0,zIndex:60,background:C.card,border:'1px solid '+C.border,borderRadius:C.radius,marginTop:4,boxShadow:'0 12px 40px rgba(0,0,0,.12)',maxHeight:240,overflow:'hidden',display:'flex',flexDirection:'column'}},
       h('div',{style:{padding:'6px 8px',borderBottom:'1px solid '+C.border}},
         h('input',{value:q,onChange:e=>setQ(e.target.value),placeholder:'🔍 Rechercher...',autoFocus:true,
           style:{width:'100%',padding:'7px 8px',borderRadius:6,border:'1px solid '+C.border,fontSize:11,outline:'none'}})),
@@ -357,7 +378,7 @@ function SearchSelect({options, value, onChange, placeholder, renderOption}) {
 
 function Badge({s}) {
   const {c,bg} = stStyle(s);
-  return h('span',{style:{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:20,background:bg,color:c}},stLabel(s));
+  return h('span',{style:{fontSize:9,fontWeight:600,padding:'3px 8px',borderRadius:20,background:bg,color:c,letterSpacing:'.02em'}},stLabel(s));
 }
 
 function Stat({label,val,sub,color}) {
@@ -370,28 +391,28 @@ function Stat({label,val,sub,color}) {
 
 function ArtCard({art,onClick}) {
   const s = getSt(art); const {c,bg} = stStyle(s);
-  return h('div',{onClick:()=>onClick(art),style:{background:'#fff',borderRadius:14,padding:'13px 16px',marginBottom:8,cursor:'pointer',border:'1px solid '+(s==='ok'?C.border:c+'44'),display:'flex',alignItems:'center',gap:12,boxShadow:'0 1px 3px rgba(0,0,0,.02)',transition:'box-shadow .15s ease'}},
-    h('div',{style:{minWidth:38,height:38,borderRadius:8,background:bg,display:'flex',alignItems:'center',justifyContent:'center'}},
-      h('span',{style:{fontSize:8,color:c,fontWeight:700,textAlign:'center',lineHeight:1.2}},art.code)),
+  return h('div',{onClick:()=>onClick(art),style:{background:C.card,borderRadius:C.radius,padding:'12px 16px',marginBottom:8,cursor:'pointer',border:'1px solid '+(s==='ok'?C.border:c+'33'),display:'flex',alignItems:'center',gap:12,boxShadow:'0 1px 3px rgba(0,0,0,.03)',transition:'all .15s ease'}},
+    h('div',{style:{minWidth:42,height:42,borderRadius:10,background:bg,display:'flex',alignItems:'center',justifyContent:'center'}},
+      h('span',{style:{fontSize:9,color:c,fontWeight:700,textAlign:'center',lineHeight:1.2}},art.sym||art.code)),
     h('div',{style:{flex:1,minWidth:0}},
-      h('div',{style:{fontSize:13,fontWeight:500,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},art.nom),
-      h('div',{style:{fontSize:11,color:C.muted,marginTop:1}},art.sym)),
-    h('div',{style:{textAlign:'right',display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3}},
-      h('div',{style:{fontSize:20,fontWeight:700,color:art.archived?C.muted:c,lineHeight:1}},art.stock),
+      h('div',{style:{fontSize:14,fontWeight:500,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},art.nom),
+      h('div',{style:{fontSize:11,color:C.muted,marginTop:2}},art.code+(art.cat?' · '+art.cat:''))),
+    h('div',{style:{textAlign:'right',display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}},
+      h('div',{style:{fontSize:22,fontWeight:800,color:art.archived?C.muted:c,lineHeight:1,letterSpacing:'-0.02em'}},art.stock),
       art.archived?h('span',{style:{fontSize:9,padding:'2px 6px',borderRadius:10,background:'#E8E5DF',color:C.muted}},'Archivé'):h(Badge,{s}))
   );
 }
 
 function Inp({label,value,onChange,placeholder,type}) {
-  return h('div',{style:{marginBottom:11}},
-    h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:4}},label),
-    h('input',{type:type||'text',value:value||'',onChange:e=>onChange(e.target.value),placeholder,style:{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid '+C.border,fontSize:12,outline:'none',background:'#fff'}})
+  return h('div',{style:{marginBottom:12}},
+    label&&h('label',{style:{fontSize:11,color:C.muted,fontWeight:600,display:'block',marginBottom:5,letterSpacing:'.02em'}},label),
+    h('input',{type:type||'text',value:value||'',onChange:e=>onChange(e.target.value),placeholder,style:{width:'100%',padding:'10px 12px',borderRadius:10,border:'1px solid '+C.border,fontSize:13,outline:'none',background:C.card,transition:'border-color .15s',color:C.text}})
   );
 }
 
 function Toast({msg,onDone}) {
   useEffect(()=>{const t=setTimeout(onDone,3000);return()=>clearTimeout(t)},[]);
-  return h('div',{style:{position:'fixed',top:12,left:16,right:16,maxWidth:398,margin:'0 auto',zIndex:200,background:'#EEF8F2',border:'1px solid '+C.ok+'33',borderRadius:11,padding:'11px 14px',display:'flex',alignItems:'center',gap:8,boxShadow:'0 4px 20px rgba(0,0,0,.12)'}},
+  return h('div',{style:{position:'fixed',top:16,left:20,right:20,maxWidth:480,margin:'0 auto',zIndex:200,background:C.okBg,border:'1px solid '+C.ok+'33',borderRadius:C.radius,padding:'12px 16px',display:'flex',alignItems:'center',gap:10,boxShadow:'0 8px 30px rgba(0,0,0,.12)'}},
     h('span',{style:{color:C.ok,fontSize:15}},'✓'),
     h('span',{style:{fontSize:12,color:C.ok,fontWeight:500,flex:1}},msg)
   );
@@ -1010,7 +1031,7 @@ function Dashboard({arts,mvts,asm,user,setPage,demandes}) {
   const rec = mvts.slice(0,6);
   const on = navigator.onLine;
 
-  return h('div',null,
+  return h('div',{className:'fade-in'},
     (() => {
       const ae = localStorage.getItem('inv_alert_enabled')==='true';
       const ad = parseInt(localStorage.getItem('inv_alert_day')||'25');
@@ -2179,41 +2200,51 @@ function ModalArticle({art,user,mvts,onClose,onRefresh}) {
 function Nav({page,setPage,alertCount,asm,user}) {
   const items = [{id:'dashboard',icon:'⌂',label:'Accueil'},{id:'stock',icon:'▣',label:'Stock'},{id:'mouvement',icon:'⇅',label:'Mouvements'},{id:'commandes',icon:'▦',label:'Commandes'},{id:'demandes',icon:'☆',label:'Spécial'},{id:'inventaire',icon:'▤',label:'Inventaire'},{id:'settings',icon:'⚙',label:'Réglages'}];
 
-  // ─── Sidebar (desktop) ───
   const sidebar = h('div',{className:'app-sidebar'},
-    h('div',{style:{padding:'20px 18px 12px'}},
-      h('div',{style:{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:'2px',textTransform:'uppercase',marginBottom:2}},'◆ INVENTORY'),
-      h('div',{style:{fontSize:15,fontWeight:700,color:C.navy,lineHeight:1.2,marginTop:4}},asm?asm.nom:''),
-      asm&&asm.ville&&h('div',{style:{fontSize:11,color:C.muted,marginTop:3}},asm.ville),
-      user&&h('div',{style:{fontSize:10,color:C.gold,fontWeight:500,marginTop:4}},user.prenom+' · '+roleLabel(user.role))),
-    h('div',{style:{height:1,background:'#E8E5DF',margin:'4px 16px 8px'}}),
-    h('div',{style:{flex:1,padding:'4px 10px',overflowY:'auto'}},
+    h('div',{style:{padding:'24px 20px 16px'}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:16}},
+        h('div',{style:{width:36,height:36,borderRadius:10,background:'linear-gradient(135deg,'+C.navy+','+C.navyL+')',display:'flex',alignItems:'center',justifyContent:'center'}},
+          h('span',{style:{color:C.gold,fontSize:14,fontWeight:800}},'◆')),
+        h('div',null,
+          h('div',{style:{fontSize:15,fontWeight:700,color:C.navy,lineHeight:1.2,letterSpacing:'-0.01em'}},'Inventory'),
+          h('div',{style:{fontSize:9,color:C.muted,fontWeight:500,letterSpacing:'.5px',textTransform:'uppercase'}},'Publications'))),
+      asm && h('div',{style:{background:C.bg,borderRadius:10,padding:'10px 12px',marginBottom:4}},
+        h('div',{style:{fontSize:13,fontWeight:600,color:C.text}},asm.nom),
+        asm.ville && h('div',{style:{fontSize:11,color:C.muted,marginTop:1}},asm.ville+(asm.numero?' · '+asm.numero:''))),
+      user && h('div',{style:{display:'flex',alignItems:'center',gap:8,marginTop:10}},
+        h('div',{style:{width:28,height:28,borderRadius:14,background:C.gold+'22',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:C.gold}},(user.prenom||'?')[0]),
+        h('div',null,
+          h('div',{style:{fontSize:12,fontWeight:500,color:C.text}},user.prenom),
+          h('div',{style:{fontSize:10,color:C.gold,fontWeight:500}},roleLabel(user.role))))),
+    h('div',{style:{height:1,background:C.border,margin:'8px 18px 12px'}}),
+    h('div',{style:{flex:1,padding:'0 10px',overflowY:'auto'}},
       ...items.map(({id,icon,label})=>{
         const active=page===id;
         const badge=id==='stock'&&alertCount>0;
-        return h('button',{key:id,onClick:()=>setPage(id),style:{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 12px',marginBottom:2,borderRadius:10,border:'none',cursor:'pointer',background:active?C.navy+'0C':'transparent',color:active?C.navy:C.muted,fontWeight:active?600:400,fontSize:13,textAlign:'left',position:'relative'}},
-          h('span',{style:{fontSize:17,width:22,textAlign:'center',lineHeight:1}},icon),
+        return h('button',{key:id,onClick:()=>setPage(id),style:{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 14px',marginBottom:3,borderRadius:10,border:'none',background:active?C.navy:'transparent',color:active?'#fff':C.muted,fontWeight:active?600:400,fontSize:13,textAlign:'left',position:'relative',transition:'all .12s'}},
+          h('span',{style:{fontSize:17,width:22,textAlign:'center',lineHeight:1,opacity:active?1:.7}},icon),
           h('span',null,label),
-          badge&&h('span',{style:{marginLeft:'auto',minWidth:18,height:18,background:C.danger,borderRadius:9,fontSize:9,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}},alertCount));
+          badge&&h('span',{style:{marginLeft:'auto',minWidth:20,height:20,background:C.danger,borderRadius:10,fontSize:9,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}},alertCount));
       })),
-    h('div',{style:{padding:'12px 16px',borderTop:'1px solid #E8E5DF'}},
-      h('div',{style:{fontSize:9,color:C.muted,textAlign:'center'}},'Inventory · 2026'))
+    h('div',{style:{padding:'14px 18px',borderTop:'1px solid '+C.border}},
+      h('div',{style:{fontSize:9,color:C.muted,textAlign:'center',letterSpacing:'.5px'}},'Inventory v2.0 · 2026'))
   );
 
-  // ─── Bottom nav (mobile) ───
-  const bnav = h('div',{className:'app-bnav',style:{background:'#fff',borderTop:'1px solid '+C.border,boxShadow:'0 -2px 12px rgba(0,0,0,.06)',display:'flex',padding:'6px 0 10px'}},
+  const bnav = h('div',{className:'app-bnav',style:{background:C.card,borderTop:'1px solid '+C.border,boxShadow:'0 -4px 20px rgba(0,0,0,.06)',display:'flex',padding:'4px 2px 8px',paddingBottom:'max(8px, env(safe-area-inset-bottom))'}},
     ...items.map(({id,icon,label})=>{
       const active=page===id;
       const badge=id==='stock'&&alertCount>0;
-      return h('button',{key:id,onClick:()=>setPage(id),style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:2,background:'none',border:'none',cursor:'pointer',padding:'2px 0'}},
-        h('div',{style:{position:'relative'}},
-          h('span',{style:{fontSize:17,color:active?C.navy:C.muted,lineHeight:1}},icon),
-          badge&&h('span',{style:{position:'absolute',top:-5,right:-5,width:13,height:13,background:C.danger,borderRadius:'50%',fontSize:7,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}},alertCount)),
-        h('span',{style:{fontSize:8,color:active?C.navy:C.muted,fontWeight:active?700:400}},label));
+      return h('button',{key:id,onClick:()=>setPage(id),style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:1,background:'none',border:'none',padding:'4px 0',position:'relative'}},
+        h('div',{style:{position:'relative',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center'}},
+          active&&h('div',{style:{position:'absolute',inset:-2,background:C.navy+'12',borderRadius:8}}),
+          h('span',{style:{fontSize:18,color:active?C.navy:C.muted,lineHeight:1,position:'relative',zIndex:1}},icon),
+          badge&&h('span',{style:{position:'absolute',top:-4,right:-6,width:14,height:14,background:C.danger,borderRadius:7,fontSize:8,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,zIndex:2}},alertCount)),
+        h('span',{style:{fontSize:9,color:active?C.navy:C.muted,fontWeight:active?600:400,marginTop:1}},label));
     }));
 
   return h(React.Fragment,null,sidebar,bnav);
 }
+
 
 // ═══════════════════════════════════════
 // APP ROOT
